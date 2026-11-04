@@ -12,12 +12,31 @@ A photorealistic, cinematic shader pack for **Minecraft 1.21.4** running on
 
 ## Download
 
-| File | Description |
-|------|-------------|
-| `Aetheris_v1.0.0.zip` | Ready-to-install shader pack (drop into `.minecraft/shaderpacks/`) |
-| `Aetheris_v1.0.0_SOURCE.zip` | Complete source archive (shaders, docs, tools) |
+| File | Size | Description |
+|------|------|-------------|
+| `Aetheris_v1.0.0.zip` | 46 KB | Ready-to-install shader pack (drop into `.minecraft/shaderpacks/`) |
+| `Aetheris_v1.0.0_SOURCE.zip` | 104 KB | Complete source archive (shaders, docs, tools) |
 
-Grab both from the **Releases** page of this repository.
+Both files are committed to this repository and are served straight from it:
+
+```
+https://codeload.github.com/ritmiro1/Game2/zip/refs/heads/arena/bce8e69d-game2
+```
+
+Download that archive, open it, and take `Aetheris_v1.0.0.zip` (or the
+`Aetheris/` folder itself — an unpacked folder also works in `shaderpacks/`).
+
+SHA-256:
+
+```
+Aetheris_v1.0.0.zip        9b53647783459c44e183fe170d172a5e4179a3d95038a8409549ce3b9c5cf653
+Aetheris_v1.0.0_SOURCE.zip c6105e05dea659b715be2b533212651e9e77a6c4747e307577f589ae51973246
+```
+
+Releases page: <https://github.com/ritmiro1/Game2/releases/tag/aetheris-v1.0.0>
+(the release entry exists, but the release-asset upload endpoint is blocked from
+the build sandbox, so the binaries live in the branch above rather than as
+release assets).
 
 ---
 
