@@ -1,0 +1,96 @@
+# Aetheris Shaders - GUI labels (Iris / OptiFine shader options)
+screen.Profiles=Aetheris Presets
+screen.Shadows=Shadows
+screen.Ambient Occlusion=Ambient Occlusion
+screen.Volumetric Light=Volumetric Light
+screen.Bloom and Flare=Bloom & Flare
+screen.Water=Water
+screen.Sky and Clouds=Sky & Clouds
+screen.Colour Grading=Colour Grading
+screen.Camera FX=Camera & Anti-Aliasing
+
+profile.LOW=LOW - 1024 shadows, no god rays
+profile.MEDIUM=MEDIUM - 2048 shadows, balanced
+profile.HIGH=HIGH - 3072 shadows, SSR, caustics
+profile.ULTRA=ULTRA - 4096 shadows, max fidelity
+
+option.SHADOW_RESOLUTION=Shadow Map Resolution
+option.SHADOW_SAMPLES=Soft Shadow Samples
+option.SHADOW_SOFTNESS=Shadow Softness
+option.SHADOW_DISTANCE=Shadow Distance
+option.SHADOW_FADE=Shadow Fade Length
+value.SHADOW_RESOLUTION.1024=1024
+value.SHADOW_RESOLUTION.2048=2048
+value.SHADOW_RESOLUTION.3072=3072
+value.SHADOW_RESOLUTION.4096=4096
+
+option.SSAO_SAMPLES=SSAO Samples
+option.SSAO_RADIUS=AO Radius
+option.SSAO_STRENGTH=AO Strength
+option.SSAO_BIAS=AO Bias
+
+option.VOLUMETRIC_LIGHT=God Rays
+option.VOLUMETRIC_STEPS=Ray Steps
+option.VOLUMETRIC_STRENGTH=Ray Intensity
+value.VOLUMETRIC_LIGHT.0=OFF
+value.VOLUMETRIC_LIGHT.1=ON
+
+option.BLOOM=Bloom
+option.BLOOM_STRENGTH=Bloom Strength
+option.BLOOM_THRESHOLD=Bloom Threshold
+value.BLOOM.0=OFF
+value.BLOOM.1=ON
+
+option.WATER_WAVES=Animated Waves
+option.WATER_WAVE_HEIGHT=Wave Height
+option.WATER_REFLECTION=Reflection Strength
+option.WATER_CLARITY=Water Clarity
+option.WATER_CAUSTICS=Underwater Caustics
+value.WATER_WAVES.0=OFF
+value.WATER_WAVES.1=ON
+value.WATER_CAUSTICS.0=OFF
+value.WATER_CAUSTICS.1=ON
+
+option.CLOUDS_ENABLED=Volumetric Clouds
+option.CLOUD_QUALITY=Cloud Detail
+option.CLOUD_COVERAGE=Cloud Coverage
+option.CLOUD_HEIGHT=Cloud Altitude
+option.CLOUD_SHADOWS=Cloud Shadows
+option.STARS=Stars
+option.MILKY_WAY=Milky Way
+option.SUN_SIZE=Sun Size
+option.SUN_GLOW=Sun Glow
+value.CLOUDS_ENABLED.0=OFF
+value.CLOUDS_ENABLED.1=ON
+value.STARS.0=OFF
+value.STARS.1=ON
+value.MILKY_WAY.0=OFF
+value.MILKY_WAY.1=ON
+value.CLOUD_SHADOWS.0=OFF
+value.CLOUD_SHADOWS.1=ON
+
+option.EXPOSURE=Exposure
+option.SATURATION=Saturation
+option.CONTRAST=Contrast
+option.WHITE_BALANCE=White Balance
+option.TONEMAP_CURVE=Tone Mapping
+option.VIGNETTE=Vignette
+option.EMISSIVE_STRENGTH=Emissive Brightness
+value.TONEMAP_CURVE.0=Reinhard
+value.TONEMAP_CURVE.1=ACES Filmic
+value.TONEMAP_CURVE.2=AgX
+value.TONEMAP_CURVE.3=Extended Reinhard
+
+option.DOF=Depth of Field
+option.DOF_STRENGTH=DOF Strength
+option.FXAA=FXAA
+option.SHARPEN=Sharpen
+option.DITHER=Deband Dither
+option.SSR_STEPS=Reflection Steps
+option.SSR_STRENGTH=Reflection Intensity
+value.DOF.0=OFF
+value.DOF.1=ON
+value.FXAA.0=OFF
+value.FXAA.1=ON
+value.DITHER.0=OFF
+value.DITHER.1=ON
