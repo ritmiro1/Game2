@@ -30,7 +30,7 @@ SHA-256:
 
 ```
 Aetheris_v1.0.0.zip        9b53647783459c44e183fe170d172a5e4179a3d95038a8409549ce3b9c5cf653
-Aetheris_v1.0.0_SOURCE.zip c6105e05dea659b715be2b533212651e9e77a6c4747e307577f589ae51973246
+Aetheris_v1.0.0_SOURCE.zip 94155a8ec9eea03a583ecd2de77c3a711b40ef454cfea845ea5725bc5eae9bd3
 ```
 
 Releases page: <https://github.com/ritmiro1/Game2/releases/tag/aetheris-v1.0.0>
