@@ -15,7 +15,7 @@ A photorealistic, cinematic shader pack for **Minecraft 1.21.4** running on
 | File | Size | Description |
 |------|------|-------------|
 | `Aetheris_v1.0.0.zip` | 46 KB | Ready-to-install shader pack (drop into `.minecraft/shaderpacks/`) |
-| `Aetheris_v1.0.0_SOURCE.zip` | 104 KB | Complete source archive (shaders, docs, tools) |
+| `Aetheris_v1.0.0_SOURCE.zip` | 96 KB | Complete source archive (shaders, docs, tools) |
 
 Both files are committed to this repository and are served straight from it:
 
