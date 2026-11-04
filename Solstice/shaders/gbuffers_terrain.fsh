@@ -17,5 +17,5 @@ void main(){
  vec3 shadowPos=shadowCoord.xyz; float sh=1.0;
  if(shadowPos.x>0.002&&shadowPos.x<0.998&&shadowPos.y>0.002&&shadowPos.y<0.998&&shadowPos.z>0.0&&shadowPos.z<1.0){vec2 px=vec2((1.0+0.35*SHADOW_QUALITY)/2048.0);sh=0.25*(step(shadowPos.z-0.001,texture2D(shadowtex0,shadowPos.xy+px*vec2(-0.5,-0.5)).r)+step(shadowPos.z-0.001,texture2D(shadowtex0,shadowPos.xy+px*vec2(0.5,-0.5)).r)+step(shadowPos.z-0.001,texture2D(shadowtex0,shadowPos.xy+px*vec2(-0.5,0.5)).r)+step(shadowPos.z-0.001,texture2D(shadowtex0,shadowPos.xy+px*vec2(0.5,0.5)).r));}
  float direct=ndl*sh*(0.45+0.55*day); float ambient=0.28+0.42*lm.y+0.28*lm.x; vec3 sun=mix(vec3(1.0,0.72,0.48),vec3(1.0,0.96,0.86),clamp(l.y+0.35,0.0,1.0));
- vec3 color=tex.rgb*(ambient+sun*direct*0.72)+tex.rgb*pow(clamp(lm.x,0.0,1.0),3.0)*0.12*EMISSIVE_BRIGHTNESS; color=mix(color,color*0.88,rainStrength); gl_FragData[0]=vec4(color,tex.a);
+ vec3 color=tex.rgb*(vec3(ambient)+sun*direct*0.72)+tex.rgb*pow(clamp(lm.x,0.0,1.0),3.0)*0.12*EMISSIVE_BRIGHTNESS; color=mix(color,color*0.88,rainStrength); gl_FragData[0]=vec4(color,tex.a);
 }
