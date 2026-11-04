@@ -1,0 +1,32 @@
+name: Windows portable build
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run dist:win
+        env:
+          PALIMPSEST_SERVER_URL: ${{ vars.PALIMPSEST_SERVER_URL }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: palimpsest-windows-x64
+          path: release/*.exe
+      - if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release/*.exe
