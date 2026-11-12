@@ -1,0 +1,97 @@
+{
+  "name": "lifeos-desktop",
+  "version": "0.1.0",
+  "description": "LifeOS — personal desktop, browser and independent web search",
+  "author": "LifeOS contributors",
+  "license": "MIT",
+  "type": "module",
+  "main": "electron/main.mjs",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "tsc -b && vite build",
+    "start": "electron .",
+    "preview": "node server/index.mjs",
+    "search": "node server/index.mjs --search-only",
+    "test": "node --test tests/*.test.mjs",
+    "test:e2e": "node scripts/e2e.mjs",
+    "dist:win": "npm run build && electron-builder --win nsis portable --x64",
+    "dist:linux": "npm run build && electron-builder --linux AppImage --x64"
+  },
+  "dependencies": {
+    "@fontsource-variable/manrope": "^5.3.0",
+    "cheerio": "1.2.0",
+    "ipaddr.js": "2.2.0",
+    "lucide-react": "1.72.0",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "robots-parser": "3.0.1",
+    "undici": "7.24.4"
+  },
+  "devDependencies": {
+    "@sparticuz/chromium": "^143.0.4",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@vitejs/plugin-react": "6.3.0",
+    "electron": "45.3.1",
+    "electron-builder": "26.18.0",
+    "playwright-core": "1.65.0",
+    "typescript": "^5.9.3",
+    "vite": "8.3.8"
+  },
+  "build": {
+    "appId": "app.lifeos.desktop",
+    "productName": "LifeOS",
+    "asar": true,
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "core/**/*",
+      "server/**/*",
+      "package.json",
+      "LICENSE",
+      "THIRD_PARTY_NOTICES.md",
+      "public/icon.*"
+    ],
+    "extraResources": [
+      {
+        "from": "native/virtual-display",
+        "to": "virtual-display-source",
+        "filter": [
+          "**/*",
+          "!**/bin/**",
+          "!**/obj/**"
+        ]
+      }
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "icon": "public/icon.ico",
+      "artifactName": "LifeOS-${version}-${arch}-${target}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "perMachine": false,
+      "createDesktopShortcut": true,
+      "deleteAppDataOnUninstall": false,
+      "artifactName": "LifeOS-${version}-Setup-x64.exe"
+    },
+    "portable": {
+      "artifactName": "LifeOS-${version}-Portable-x64.exe"
+    },
+    "linux": {
+      "target": "AppImage",
+      "category": "Office",
+      "icon": "public/icon.png"
+    }
+  }
+}

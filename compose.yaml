@@ -1,0 +1,16 @@
+services:
+  search:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3101:3101"
+    environment:
+      LIFEOS_ADMIN_TOKEN: ${LIFEOS_ADMIN_TOKEN:?Set a strong LIFEOS_ADMIN_TOKEN in your environment}
+    volumes:
+      - search-data:/data
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+volumes:
+  search-data:
