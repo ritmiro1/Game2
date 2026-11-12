@@ -1,19 +1,457 @@
 import { useState } from 'react';
-import { Plus,ChevronLeft,ChevronRight,CalendarDays,Clock3,Trash2,Flame,Check,Download } from 'lucide-react';
+import {
+  Plus,
+  ChevronLeft,
+  ChevronRight,
+  CalendarDays,
+  Clock3,
+  Trash2,
+  Flame,
+  Check,
+  Download,
+} from 'lucide-react';
 import { useLife } from '../state';
-import { AppHeading,Empty,IconButton,Modal,QuickInput } from '../components/ui';
-import { today,formatDate } from '../api';
+import { AppHeading, Empty, IconButton, Modal, QuickInput } from '../components/ui';
+import { today, formatDate } from '../api';
 import type { Entity } from '../types';
-const dayString=(d:Date)=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-const localInput=(d:Date)=>dayString(d)+'T'+`${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
-function EventEditor({event,day,onClose}:{event?:Entity;day:string;onClose:()=>void}){const {save,remove,data}=useLife();const [title,setTitle]=useState(event?.title||''),[start,setStart]=useState(event?localInput(new Date(event.start)):day+'T10:00'),[end,setEnd]=useState(event?localInput(new Date(event.end)):day+'T11:00'),[description,setDescription]=useState(event?.description||''),[project,setProject]=useState(event?.projectId||'');return <Modal title={event?'Событие':'Новое событие'} onClose={onClose}><form className="form-stack" onSubmit={async e=>{e.preventDefault();const result=await save('events',{...event,title,start:new Date(start).toISOString(),end:new Date(end).toISOString(),description,projectId:project||null,timezone:Intl.DateTimeFormat().resolvedOptions().timeZone});if(result)onClose();}}><label>Название<input required value={title} onChange={e=>setTitle(e.target.value)} placeholder="Для чего выделить время?"/></label><div className="form-row"><label>Начало<input type="datetime-local" required value={start} onChange={e=>setStart(e.target.value)}/></label><label>Окончание<input type="datetime-local" required value={end} onChange={e=>setEnd(e.target.value)}/></label></div><label>Проект<select value={project} onChange={e=>setProject(e.target.value)}><option value="">Без проекта</option>{data.projects.map(p=><option key={p.id} value={p.id}>{p.title}</option>)}</select></label><label>Описание<textarea rows={3} value={description} onChange={e=>setDescription(e.target.value)}/></label><p className="field-help">Часовой пояс: {Intl.DateTimeFormat().resolvedOptions().timeZone}. В этой preview события без повторений.</p><div className="form-footer">{event&&<button type="button" className="button danger ghost" onClick={async()=>{await remove('events',event);onClose();}}><Trash2 size={15}/>Удалить</button>}<button type="button" className="button ghost" onClick={onClose}>Отмена</button><button className="button primary" disabled={!title.trim()}>Сохранить событие</button></div></form></Modal>;}
-export function Calendar(){
-  const {data}=useLife();const [month,setMonth]=useState(()=>new Date(new Date().getFullYear(),new Date().getMonth(),1)),[selected,setSelected]=useState(today()),[editor,setEditor]=useState<Entity|null|undefined>(undefined);
-  const offset=(new Date(month.getFullYear(),month.getMonth(),1).getDay()+6)%7;const days=Array.from({length:42},(_,i)=>new Date(month.getFullYear(),month.getMonth(),i-offset+1));
-  const selectedEvents=data.events.filter(e=>dayString(new Date(e.start))===selected).sort((a,b)=>Date.parse(a.start)-Date.parse(b.start));
-  function exportIcs(){const escape=(s:string)=>s.replaceAll('\\','\\\\').replaceAll('\n','\\n').replaceAll(';','\\;').replaceAll(',','\\,');const stamp=(s:string)=>new Date(s).toISOString().replace(/[-:]/g,'').replace(/\.\d{3}/,'');const lines=['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//LifeOS//Calendar 0.1//RU',...data.events.flatMap(e=>['BEGIN:VEVENT','UID:'+e.id+'@lifeos.local','DTSTAMP:'+stamp(new Date().toISOString()),'DTSTART:'+stamp(e.start),'DTEND:'+stamp(e.end),'SUMMARY:'+escape(e.title),'DESCRIPTION:'+escape(e.description||''),'END:VEVENT']),'END:VCALENDAR'];const url=URL.createObjectURL(new Blob([lines.join('\r\n')+'\r\n'],{type:'text/calendar'}));const a=document.createElement('a');a.href=url;a.download='LifeOS-calendar.ics';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
-  return <div className="app-page"><AppHeading eyebrow="ВРЕМЯ ДЛЯ ВАЖНОГО" title="Календарь" description="Не заполнить день. Освободить место главному."><button className="button secondary" onClick={exportIcs}><Download size={16}/>ICS</button><button className="button primary" onClick={()=>setEditor(null)}><Plus size={16}/>Событие</button></AppHeading><div className="calendar-layout"><div className="calendar-main"><div className="calendar-controls"><h2>{formatDate(month.toISOString(),{month:'long',year:'numeric'})}</h2><div><button className="button ghost small" onClick={()=>{setMonth(new Date(new Date().getFullYear(),new Date().getMonth(),1));setSelected(today());}}>Сегодня</button><IconButton label="Предыдущий месяц" onClick={()=>setMonth(new Date(month.getFullYear(),month.getMonth()-1,1))}><ChevronLeft size={18}/></IconButton><IconButton label="Следующий месяц" onClick={()=>setMonth(new Date(month.getFullYear(),month.getMonth()+1,1))}><ChevronRight size={18}/></IconButton></div></div><div className="calendar-weekdays">{['Пн','Вт','Ср','Чт','Пт','Сб','Вс'].map(d=><span key={d}>{d}</span>)}</div><div className="calendar-grid">{days.map(d=>{const key=dayString(d);const events=data.events.filter(e=>dayString(new Date(e.start))===key);return <button key={key} className={'calendar-cell '+(d.getMonth()!==month.getMonth()?'other ':'')+(key===selected?'selected ':'')+(key===today()?'is-today':'')} onClick={()=>setSelected(key)} onDoubleClick={()=>{setSelected(key);setEditor(null);}}><span>{d.getDate()}</span>{events.slice(0,2).map(e=><small key={e.id}>{e.title}</small>)}{events.length>2&&<em>+{events.length-2}</em>}</button>;})}</div></div><aside className="calendar-agenda"><span className="eyebrow">РАСПИСАНИЕ</span><h2>{formatDate(selected,{day:'numeric',month:'long'})}</h2><p>{formatDate(selected,{weekday:'long'})}</p>{selectedEvents.length?selectedEvents.map(e=><button key={e.id} className="agenda-event" onClick={()=>setEditor(e)}><span><Clock3 size={13}/>{formatDate(e.start,{hour:'2-digit',minute:'2-digit'})} — {formatDate(e.end,{hour:'2-digit',minute:'2-digit'})}</span><strong>{e.title}</strong><small>{e.description}</small></button>):<Empty icon={<CalendarDays size={24}/>} title="Свободное пространство" description="Добавьте встречу или время для себя."/>}<button className="button secondary full" onClick={()=>setEditor(null)}><Plus size={16}/>Добавить событие</button><div className="subtle-note">Локальный календарь · {Intl.DateTimeFormat().resolvedOptions().timeZone}</div></aside></div>{editor!==undefined&&<EventEditor event={editor||undefined} day={selected} onClose={()=>setEditor(undefined)}/>}</div>;
+const dayString = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const localInput = (d: Date) =>
+  dayString(d) +
+  'T' +
+  `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+function EventEditor({
+  event,
+  day,
+  onClose,
+}: {
+  event?: Entity;
+  day: string;
+  onClose: () => void;
+}) {
+  const { save, remove, data } = useLife();
+  const [title, setTitle] = useState(event?.title || ''),
+    [start, setStart] = useState(event ? localInput(new Date(event.start)) : day + 'T10:00'),
+    [end, setEnd] = useState(event ? localInput(new Date(event.end)) : day + 'T11:00'),
+    [description, setDescription] = useState(event?.description || ''),
+    [project, setProject] = useState(event?.projectId || '');
+  return (
+    <Modal title={event ? 'Событие' : 'Новое событие'} onClose={onClose}>
+      <form
+        className="form-stack"
+        onSubmit={async (e) => {
+          e.preventDefault();
+          const result = await save('events', {
+            ...event,
+            title,
+            start: new Date(start).toISOString(),
+            end: new Date(end).toISOString(),
+            description,
+            projectId: project || null,
+            timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+          });
+          if (result) onClose();
+        }}
+      >
+        <label>
+          Название
+          <input
+            required
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="Для чего выделить время?"
+          />
+        </label>
+        <div className="form-row">
+          <label>
+            Начало
+            <input
+              type="datetime-local"
+              required
+              value={start}
+              onChange={(e) => setStart(e.target.value)}
+            />
+          </label>
+          <label>
+            Окончание
+            <input
+              type="datetime-local"
+              required
+              value={end}
+              onChange={(e) => setEnd(e.target.value)}
+            />
+          </label>
+        </div>
+        <label>
+          Проект
+          <select value={project} onChange={(e) => setProject(e.target.value)}>
+            <option value="">Без проекта</option>
+            {data.projects.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.title}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Описание
+          <textarea rows={3} value={description} onChange={(e) => setDescription(e.target.value)} />
+        </label>
+        <p className="field-help">
+          Часовой пояс: {Intl.DateTimeFormat().resolvedOptions().timeZone}. В этой preview события
+          без повторений.
+        </p>
+        <div className="form-footer">
+          {event && (
+            <button
+              type="button"
+              className="button danger ghost"
+              onClick={async () => {
+                await remove('events', event);
+                onClose();
+              }}
+            >
+              <Trash2 size={15} />
+              Удалить
+            </button>
+          )}
+          <button type="button" className="button ghost" onClick={onClose}>
+            Отмена
+          </button>
+          <button className="button primary" disabled={!title.trim()}>
+            Сохранить событие
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
 }
-export function Habits(){const {data,save,remove}=useLife();const [newHabit,setNewHabit]=useState(false),[title,setTitle]=useState('');const days=Array.from({length:7},(_,i)=>{const d=new Date();d.setDate(d.getDate()-6+i);return dayString(d);});const logs=(habitId:string,day:string)=>data.habitLogs.find(l=>l.habitId===habitId&&l.day===day);async function toggle(habit:Entity,day:string){const existing=logs(habit.id,day);if(existing)await remove('habitLogs',existing);else await save('habitLogs',{habitId:habit.id,day,value:1});}const completed=data.habits.filter(h=>logs(h.id,today())).length;
-  return <div className="app-page"><AppHeading eyebrow="ПОСТЕПЕННО — ТОЖЕ ВПЕРЁД" title="Привычки" description="Не идеальная серия. Устойчивый ритм."><button className="button primary" onClick={()=>setNewHabit(true)}><Plus size={16}/>Новая привычка</button></AppHeading><div className="habit-summary"><div className="habit-ring" style={{'--progress':data.habits.length?`${completed/data.habits.length*100}%`:'0%'} as React.CSSProperties}><strong>{completed}<small>/{data.habits.length}</small></strong></div><div><h2>{completed===data.habits.length&&completed?'Сегодня всё получилось':'Ваш маленький шаг сегодня'}</h2><p>{completed} из {data.habits.length} привычек отмечено. Можно продолжить в любой момент.</p></div></div><div className="habit-table"><div className="habit-table-head"><span>ВАША ПРИВЫЧКА</span><div>{days.map(day=><span key={day} className={day===today()?'accent-text':''}>{formatDate(day,{weekday:'short'})}<b>{day.slice(8)}</b></span>)}</div><span/></div>{data.habits.map(h=><div className="habit-row" key={h.id}><div className="habit-name"><span className="app-icon coral"><Flame size={20}/></span><div><strong>{h.title}</strong><small>{data.habitLogs.filter(l=>l.habitId===h.id).length} отметок за всё время</small></div></div><div className="habit-days">{days.map(day=><button key={day} title={formatDate(day)} aria-label={`${h.title}, ${day}: ${logs(h.id,day)?'выполнено':'отметить'}`} className={logs(h.id,day)?'completed':''} onClick={()=>{void toggle(h,day);}}>{logs(h.id,day)?<Check size={17}/>:<span/>}</button>)}</div><IconButton label="Удалить привычку" onClick={()=>{void remove('habits',h);}}><Trash2 size={15}/></IconButton></div>)}{!data.habits.length&&<Empty icon={<Flame size={28}/>} title="Начните с малого" description="Стакан воды, десять страниц, короткая прогулка. Вы выбираете." action={<button className="button primary" onClick={()=>setNewHabit(true)}>Добавить привычку</button>}/>}</div>{newHabit&&<Modal title="Маленькое действие, большой смысл" onClose={()=>setNewHabit(false)}><form className="form-stack" onSubmit={async e=>{e.preventDefault();if(await save('habits',{title,schedule:'daily'})){setTitle('');setNewHabit(false);}}}><label>Привычка<input required value={title} onChange={e=>setTitle(e.target.value)} placeholder="Например, читать 15 минут"/></label><p className="field-help">В этой preview — ежедневные отметки. Пропуски не удаляют историю.</p><button className="button primary" disabled={!title.trim()}>Добавить привычку</button></form></Modal>}<QuickInput placeholder="Ещё одна небольшая привычка…" onSubmit={title=>save('habits',{title,schedule:'daily'})}/></div>;
+export function Calendar() {
+  const { data } = useLife();
+  const [month, setMonth] = useState(
+      () => new Date(new Date().getFullYear(), new Date().getMonth(), 1),
+    ),
+    [selected, setSelected] = useState(today()),
+    [editor, setEditor] = useState<Entity | null | undefined>(undefined);
+  const offset = (new Date(month.getFullYear(), month.getMonth(), 1).getDay() + 6) % 7;
+  const days = Array.from(
+    { length: 42 },
+    (_, i) => new Date(month.getFullYear(), month.getMonth(), i - offset + 1),
+  );
+  const selectedEvents = data.events
+    .filter((e) => dayString(new Date(e.start)) === selected)
+    .sort((a, b) => Date.parse(a.start) - Date.parse(b.start));
+  function exportIcs() {
+    const escape = (s: string) =>
+      s
+        .replaceAll('\\', '\\\\')
+        .replaceAll('\n', '\\n')
+        .replaceAll(';', '\\;')
+        .replaceAll(',', '\\,');
+    const stamp = (s: string) =>
+      new Date(s)
+        .toISOString()
+        .replace(/[-:]/g, '')
+        .replace(/\.\d{3}/, '');
+    const lines = [
+      'BEGIN:VCALENDAR',
+      'VERSION:2.0',
+      'PRODID:-//LifeOS//Calendar 0.1//RU',
+      ...data.events.flatMap((e) => [
+        'BEGIN:VEVENT',
+        'UID:' + e.id + '@lifeos.local',
+        'DTSTAMP:' + stamp(new Date().toISOString()),
+        'DTSTART:' + stamp(e.start),
+        'DTEND:' + stamp(e.end),
+        'SUMMARY:' + escape(e.title),
+        'DESCRIPTION:' + escape(e.description || ''),
+        'END:VEVENT',
+      ]),
+      'END:VCALENDAR',
+    ];
+    const url = URL.createObjectURL(
+      new Blob([lines.join('\r\n') + '\r\n'], { type: 'text/calendar' }),
+    );
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'LifeOS-calendar.ics';
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+  return (
+    <div className="app-page">
+      <AppHeading
+        eyebrow="ВРЕМЯ ДЛЯ ВАЖНОГО"
+        title="Календарь"
+        description="Не заполнить день. Освободить место главному."
+      >
+        <button className="button secondary" onClick={exportIcs}>
+          <Download size={16} />
+          ICS
+        </button>
+        <button className="button primary" onClick={() => setEditor(null)}>
+          <Plus size={16} />
+          Событие
+        </button>
+      </AppHeading>
+      <div className="calendar-layout">
+        <div className="calendar-main">
+          <div className="calendar-controls">
+            <h2>{formatDate(month.toISOString(), { month: 'long', year: 'numeric' })}</h2>
+            <div>
+              <button
+                className="button ghost small"
+                onClick={() => {
+                  setMonth(new Date(new Date().getFullYear(), new Date().getMonth(), 1));
+                  setSelected(today());
+                }}
+              >
+                Сегодня
+              </button>
+              <IconButton
+                label="Предыдущий месяц"
+                onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() - 1, 1))}
+              >
+                <ChevronLeft size={18} />
+              </IconButton>
+              <IconButton
+                label="Следующий месяц"
+                onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() + 1, 1))}
+              >
+                <ChevronRight size={18} />
+              </IconButton>
+            </div>
+          </div>
+          <div className="calendar-weekdays">
+            {['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].map((d) => (
+              <span key={d}>{d}</span>
+            ))}
+          </div>
+          <div className="calendar-grid">
+            {days.map((d) => {
+              const key = dayString(d);
+              const events = data.events.filter((e) => dayString(new Date(e.start)) === key);
+              return (
+                <button
+                  key={key}
+                  className={
+                    'calendar-cell ' +
+                    (d.getMonth() !== month.getMonth() ? 'other ' : '') +
+                    (key === selected ? 'selected ' : '') +
+                    (key === today() ? 'is-today' : '')
+                  }
+                  onClick={() => setSelected(key)}
+                  onDoubleClick={() => {
+                    setSelected(key);
+                    setEditor(null);
+                  }}
+                >
+                  <span>{d.getDate()}</span>
+                  {events.slice(0, 2).map((e) => (
+                    <small key={e.id}>{e.title}</small>
+                  ))}
+                  {events.length > 2 && <em>+{events.length - 2}</em>}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+        <aside className="calendar-agenda">
+          <span className="eyebrow">РАСПИСАНИЕ</span>
+          <h2>{formatDate(selected, { day: 'numeric', month: 'long' })}</h2>
+          <p>{formatDate(selected, { weekday: 'long' })}</p>
+          {selectedEvents.length ? (
+            selectedEvents.map((e) => (
+              <button key={e.id} className="agenda-event" onClick={() => setEditor(e)}>
+                <span>
+                  <Clock3 size={13} />
+                  {formatDate(e.start, { hour: '2-digit', minute: '2-digit' })} —{' '}
+                  {formatDate(e.end, { hour: '2-digit', minute: '2-digit' })}
+                </span>
+                <strong>{e.title}</strong>
+                <small>{e.description}</small>
+              </button>
+            ))
+          ) : (
+            <Empty
+              icon={<CalendarDays size={24} />}
+              title="Свободное пространство"
+              description="Добавьте встречу или время для себя."
+            />
+          )}
+          <button className="button secondary full" onClick={() => setEditor(null)}>
+            <Plus size={16} />
+            Добавить событие
+          </button>
+          <div className="subtle-note">
+            Локальный календарь · {Intl.DateTimeFormat().resolvedOptions().timeZone}
+          </div>
+        </aside>
+      </div>
+      {editor !== undefined && (
+        <EventEditor
+          event={editor || undefined}
+          day={selected}
+          onClose={() => setEditor(undefined)}
+        />
+      )}
+    </div>
+  );
+}
+export function Habits() {
+  const { data, save, remove } = useLife();
+  const [newHabit, setNewHabit] = useState(false),
+    [title, setTitle] = useState('');
+  const days = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date();
+    d.setDate(d.getDate() - 6 + i);
+    return dayString(d);
+  });
+  const logs = (habitId: string, day: string) =>
+    data.habitLogs.find((l) => l.habitId === habitId && l.day === day);
+  async function toggle(habit: Entity, day: string) {
+    const existing = logs(habit.id, day);
+    if (existing) await remove('habitLogs', existing);
+    else await save('habitLogs', { habitId: habit.id, day, value: 1 });
+  }
+  const completed = data.habits.filter((h) => logs(h.id, today())).length;
+  return (
+    <div className="app-page">
+      <AppHeading
+        eyebrow="ПОСТЕПЕННО — ТОЖЕ ВПЕРЁД"
+        title="Привычки"
+        description="Не идеальная серия. Устойчивый ритм."
+      >
+        <button className="button primary" onClick={() => setNewHabit(true)}>
+          <Plus size={16} />
+          Новая привычка
+        </button>
+      </AppHeading>
+      <div className="habit-summary">
+        <div
+          className="habit-ring"
+          style={
+            {
+              '--progress': data.habits.length
+                ? `${(completed / data.habits.length) * 100}%`
+                : '0%',
+            } as React.CSSProperties
+          }
+        >
+          <strong>
+            {completed}
+            <small>/{data.habits.length}</small>
+          </strong>
+        </div>
+        <div>
+          <h2>
+            {completed === data.habits.length && completed
+              ? 'Сегодня всё получилось'
+              : 'Ваш маленький шаг сегодня'}
+          </h2>
+          <p>
+            {completed} из {data.habits.length} привычек отмечено. Можно продолжить в любой момент.
+          </p>
+        </div>
+      </div>
+      <div className="habit-table">
+        <div className="habit-table-head">
+          <span>ВАША ПРИВЫЧКА</span>
+          <div>
+            {days.map((day) => (
+              <span key={day} className={day === today() ? 'accent-text' : ''}>
+                {formatDate(day, { weekday: 'short' })}
+                <b>{day.slice(8)}</b>
+              </span>
+            ))}
+          </div>
+          <span />
+        </div>
+        {data.habits.map((h) => (
+          <div className="habit-row" key={h.id}>
+            <div className="habit-name">
+              <span className="app-icon coral">
+                <Flame size={20} />
+              </span>
+              <div>
+                <strong>{h.title}</strong>
+                <small>
+                  {data.habitLogs.filter((l) => l.habitId === h.id).length} отметок за всё время
+                </small>
+              </div>
+            </div>
+            <div className="habit-days">
+              {days.map((day) => (
+                <button
+                  key={day}
+                  title={formatDate(day)}
+                  aria-label={`${h.title}, ${day}: ${logs(h.id, day) ? 'выполнено' : 'отметить'}`}
+                  className={logs(h.id, day) ? 'completed' : ''}
+                  onClick={() => {
+                    void toggle(h, day);
+                  }}
+                >
+                  {logs(h.id, day) ? <Check size={17} /> : <span />}
+                </button>
+              ))}
+            </div>
+            <IconButton
+              label="Удалить привычку"
+              onClick={() => {
+                void remove('habits', h);
+              }}
+            >
+              <Trash2 size={15} />
+            </IconButton>
+          </div>
+        ))}
+        {!data.habits.length && (
+          <Empty
+            icon={<Flame size={28} />}
+            title="Начните с малого"
+            description="Стакан воды, десять страниц, короткая прогулка. Вы выбираете."
+            action={
+              <button className="button primary" onClick={() => setNewHabit(true)}>
+                Добавить привычку
+              </button>
+            }
+          />
+        )}
+      </div>
+      {newHabit && (
+        <Modal title="Маленькое действие, большой смысл" onClose={() => setNewHabit(false)}>
+          <form
+            className="form-stack"
+            onSubmit={async (e) => {
+              e.preventDefault();
+              if (await save('habits', { title, schedule: 'daily' })) {
+                setTitle('');
+                setNewHabit(false);
+              }
+            }}
+          >
+            <label>
+              Привычка
+              <input
+                required
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="Например, читать 15 минут"
+              />
+            </label>
+            <p className="field-help">
+              В этой preview — ежедневные отметки. Пропуски не удаляют историю.
+            </p>
+            <button className="button primary" disabled={!title.trim()}>
+              Добавить привычку
+            </button>
+          </form>
+        </Modal>
+      )}
+      <QuickInput
+        placeholder="Ещё одна небольшая привычка…"
+        onSubmit={(title) => save('habits', { title, schedule: 'daily' })}
+      />
+    </div>
+  );
 }

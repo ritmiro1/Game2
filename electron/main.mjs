@@ -1,86 +1,755 @@
-import { app,BrowserWindow,WebContentsView,ipcMain,protocol,session,dialog,shell,screen,desktopCapturer,Notification } from 'electron';
-import { readFile,stat,mkdir,writeFile } from 'node:fs/promises';
-import { join,dirname,resolve,sep,extname,basename } from 'node:path';
+import {
+  app,
+  BrowserWindow,
+  WebContentsView,
+  ipcMain,
+  protocol,
+  session,
+  dialog,
+  shell,
+  screen,
+  desktopCapturer,
+  Notification,
+} from 'electron';
+import { readFile, stat, mkdir, writeFile } from 'node:fs/promises';
+import { join, dirname, resolve, sep, extname, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { createService } from '../core/service.mjs';
-const here=dirname(fileURLToPath(import.meta.url)),root=resolve(here,'..'),dist=join(root,'dist');
-protocol.registerSchemesAsPrivileged([{scheme:'life',privileges:{standard:true,secure:true,supportFetchAPI:true,corsEnabled:true,stream:true}}]);
-app.setName('LifeOS');if(process.platform==='win32')app.setAppUserModelId('app.lifeos.desktop');
-const smoke=process.argv.includes('--smoke-test'),smokeDir=process.env.LIFEOS_SMOKE_DIR;
-if(smokeDir)app.setPath('userData',smokeDir);if(smoke)app.disableHardwareAcceleration();
-let handleLife,main,service,activeId=null,lastBounds=null,quitting=false;const tabs=new Map(),downloads=[],viewers=new Map(),configuredSessions=new Set();
-function emit(channel,data){if(main&&!main.isDestroyed())main.webContents.send(channel,data);}
-function browserState(){return {tabs:[...tabs.values()].map(t=>({id:t.id,url:t.url,title:t.title,private:t.private,loading:t.view.webContents.isLoading(),canGoBack:t.view.webContents.navigationHistory.canGoBack(),canGoForward:t.view.webContents.navigationHistory.canGoForward()})),activeId};}
-function persistTabs(){service.store.setSetting('browserTabs',[...tabs.values()].filter(t=>!t.private).map(t=>({url:t.url,title:t.title,profile:t.profile})).slice(0,24));}
-function sendTabs(){emit('browser-state',browserState());}
-function safeUrl(raw){const url=new URL(String(raw));if(!['https:','http:'].includes(url.protocol)||url.username||url.password)throw new Error('Разрешены только HTTP(S)-страницы без пароля в адресе');return url.href;}
-function trusted(event){return main&&!main.isDestroyed()&&event.sender===main.webContents&&event.senderFrame===main.webContents.mainFrame&&event.senderFrame.url.startsWith('life://app/');}
-function hideViews(){for(const t of tabs.values())t.view.setVisible(false);}
-function activate(id){const t=tabs.get(id);if(!t)throw new Error('Вкладка не найдена');activeId=id;hideViews();if(lastBounds){t.view.setBounds(lastBounds);t.view.setVisible(true);}if(t.lazy){t.lazy=false;void t.view.webContents.loadURL(t.url).catch(()=>{});}sendTabs();}
-function configureSession(s){if(configuredSessions.has(s))return;configuredSessions.add(s);
-  s.setPermissionCheckHandler(()=>false);
-  s.setPermissionRequestHandler(async(wc,permission,callback,details)=>{if(!['media','geolocation','notifications','clipboard-read','fullscreen'].includes(permission))return callback(false);const origin=details.requestingUrl?new URL(details.requestingUrl).origin:new URL(wc.getURL()).origin;const answer=await dialog.showMessageBox(main,{type:'question',title:'Разрешение сайта',message:`${origin} запрашивает: ${permission}`,detail:'Разрешение действует для этого запроса. Сайт не получает доступ к данным LifeOS.',buttons:['Запретить','Разрешить один раз'],defaultId:0,cancelId:0});callback(answer.response===1);});
-  s.on('will-download',(_event,item)=>{const record={id:randomUUID(),name:item.getFilename(),url:item.getURL(),received:0,total:item.getTotalBytes(),state:'progressing',path:null};downloads.unshift(record);item.setSaveDialogOptions({title:'Сохранить загрузку Life Browser',defaultPath:join(app.getPath('downloads'),basename(item.getFilename()))});item.on('updated',()=>{record.received=item.getReceivedBytes();record.total=item.getTotalBytes();emit('downloads',downloads);});item.once('done',(_e,state)=>{record.state=state;record.path=item.getSavePath();emit('downloads',downloads);});emit('downloads',downloads);});
+const here = dirname(fileURLToPath(import.meta.url)),
+  root = resolve(here, '..'),
+  dist = join(root, 'dist');
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: 'life',
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      corsEnabled: true,
+      stream: true,
+    },
+  },
+]);
+app.setName('LifeOS');
+if (process.platform === 'win32') app.setAppUserModelId('app.lifeos.desktop');
+const smoke = process.argv.includes('--smoke-test'),
+  smokeDir = process.env.LIFEOS_SMOKE_DIR;
+if (smokeDir) app.setPath('userData', smokeDir);
+if (smoke) app.disableHardwareAcceleration();
+let handleLife,
+  main,
+  service,
+  activeId = null,
+  lastBounds = null,
+  quitting = false;
+let closeApproved = false,
+  closeTimer = null;
+const tabs = new Map(),
+  downloads = [],
+  viewers = new Map(),
+  configuredSessions = new Set();
+function emit(channel, data) {
+  if (main && !main.isDestroyed()) main.webContents.send(channel, data);
 }
-function createTab(url,profile='personal',{lazy=false,title}={}){
-  if(tabs.size>=24)throw new Error('Открыто 24 вкладки. Закройте ненужные.');url=safeUrl(url);if(!['personal','work','private'].includes(profile))throw new Error('Неизвестный профиль');
-  const id=randomUUID(),partition=profile==='private'?'private-'+id:'persist:lifeos-'+profile;
-  const s=session.fromPartition(partition);configureSession(s);
-  const view=new WebContentsView({webPreferences:{session:s,nodeIntegration:false,contextIsolation:true,sandbox:true,webSecurity:true,allowRunningInsecureContent:false,spellcheck:true}});view.setBackgroundColor('#ffffff');main.contentView.addChildView(view);view.setVisible(false);
-  const t={id,url,title:title||new URL(url).hostname,view,profile,private:profile==='private',lazy};tabs.set(id,t);
-  view.webContents.setWindowOpenHandler(details=>{try{createTab(details.url,profile);}catch{}return {action:'deny'};});
-  view.webContents.on('will-navigate',(event,target)=>{try{safeUrl(target);}catch{event.preventDefault();}});
-  view.webContents.on('will-redirect',(event,target)=>{try{safeUrl(target);}catch{event.preventDefault();}});
-  for(const event of ['did-start-loading','did-stop-loading'])view.webContents.on(event,sendTabs);
-  view.webContents.on('did-navigate',(_event,target)=>{t.url=target;persistTabs();sendTabs();});
-  view.webContents.on('page-title-updated',(_e,value)=>{t.title=value.slice(0,300);persistTabs();sendTabs();});
-  view.webContents.on('before-input-event',(e,input)=>{if(input.type==='keyDown'&&(input.control||input.meta)&&['l','k','t','w'].includes(input.key.toLowerCase())){e.preventDefault();const key=input.key.toLowerCase();if(key==='w'){closeTab(id);return;}if(key==='k'||key==='t')hideViews();main.webContents.focus();emit('browser-shortcut',key);}});
-  if(!lazy){activeId=id;hideViews();if(lastBounds){view.setBounds(lastBounds);view.setVisible(true);}void view.webContents.loadURL(url).catch(()=>{t.title='Не удалось открыть страницу';sendTabs();});}
-  sendTabs();return {id};
-}
-function closeTab(id){const t=tabs.get(id);if(!t)return;main.contentView.removeChildView(t.view);t.view.webContents.close();tabs.delete(id);if(activeId===id){activeId=null;hideViews();}persistTabs();sendTabs();}
-function displayList(){const primary=screen.getPrimaryDisplay().id;return screen.getAllDisplays().map(d=>({id:d.id,label:d.label,bounds:d.bounds,scaleFactor:d.scaleFactor,primary:d.id===primary,virtual:/lifeos/i.test(d.label||'')}));}
-async function createViewer(id){const display=screen.getAllDisplays().find(d=>d.id===id);if(!display)throw new Error('Дисплей не найден');const primary=screen.getPrimaryDisplay();if(display.id===primary.id)throw new Error('Viewer не захватывает основной монитор: это предотвращает рекурсивное зеркало.');
-  const sources=await desktopCapturer.getSources({types:['screen'],thumbnailSize:{width:0,height:0}});const source=sources.find(s=>String(s.display_id)===String(display.id));if(!source)throw new Error('Этот дисплей недоступен для захвата в текущей сессии.');
-  const part='viewer-'+randomUUID(),s=session.fromPartition(part);s.protocol.handle('life',handleLife);s.setDisplayMediaRequestHandler((_request,callback)=>callback({video:source}));s.setPermissionRequestHandler((_wc,p,cb)=>cb(p==='display-capture'));const viewer=new BrowserWindow({width:1060,height:700,x:primary.workArea.x+40,y:primary.workArea.y+40,title:'LifeOS Viewer',backgroundColor:'#101713',webPreferences:{partition:part,preload:join(here,'viewer-preload.cjs'),nodeIntegration:false,contextIsolation:true,sandbox:true}});const viewerId=viewer.webContents.id;viewers.set(viewerId,{window:viewer,display});viewer.on('closed',()=>viewers.delete(viewerId));await viewer.loadURL('life://viewer/viewer.html');return true;
-}
-function viewerTarget(info,payload){if(!Number.isFinite(payload.x)||!Number.isFinite(payload.y))return null;const wx=info.display.bounds.x+payload.x/info.display.scaleFactor,wy=info.display.bounds.y+payload.y/info.display.scaleFactor;const b=main.getContentBounds(),x=Math.round(wx-b.x),y=Math.round(wy-b.y);if(x<0||y<0||x>b.width||y>b.height)return null;const t=tabs.get(activeId);if(t&&t.view.getVisible()&&lastBounds&&x>=lastBounds.x&&x<lastBounds.x+lastBounds.width&&y>=lastBounds.y&&y<lastBounds.y+lastBounds.height)return {wc:t.view.webContents,x:x-lastBounds.x,y:y-lastBounds.y};return {wc:main.webContents,x,y};}
-async function setup(){
-  const userData=app.getPath('userData');await mkdir(userData,{recursive:true});service=createService(userData,{autoCrawl:!smoke});
-  handleLife=async request=>{try{const url=new URL(request.url);let base;if(url.host==='app')base=dist;else if(url.host==='viewer')base=here;else return new Response('Forbidden',{status:403});const path=resolve(base,'.'+decodeURIComponent(url.pathname));if(!path.startsWith(base+sep))return new Response('Forbidden',{status:403});const mime={'.html':'text/html; charset=utf-8','.js':'application/javascript','.css':'text/css','.svg':'image/svg+xml','.png':'image/png','.woff2':'font/woff2','.ico':'image/x-icon'}[extname(path)]||'application/octet-stream';return new Response(await readFile(path),{headers:{'content-type':mime,'content-security-policy':"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; media-src blob:; object-src 'none'; base-uri 'self'"}});}catch{return new Response('Not found',{status:404});}};protocol.handle('life',handleLife);
-  main=new BrowserWindow({width:1440,height:940,minWidth:820,minHeight:620,show:!smoke,title:'LifeOS',backgroundColor:'#101713',autoHideMenuBar:true,icon:join(root,'public/icon.png'),webPreferences:{preload:join(here,'preload.cjs'),nodeIntegration:false,contextIsolation:true,sandbox:true,webSecurity:true}});
-  main.webContents.setWindowOpenHandler(({url})=>{try{void shell.openExternal(safeUrl(url));}catch{}return {action:'deny'};});main.webContents.on('will-navigate',(e,url)=>{if(!url.startsWith('life://app/'))e.preventDefault();});
-  const nativeActions={
-    capabilities:()=>({desktop:true,platform:process.platform,nativeBrowser:true,virtualDisplay:displayList().some(d=>d.virtual),version:app.getVersion()}),displays:displayList,
-    'window:fullscreen':()=>{main.setFullScreen(!main.isFullScreen());return true;},
-    'notify':({title,body})=>{if(Notification.isSupported())new Notification({title:String(title).slice(0,100),body:String(body).slice(0,400)}).show();return true;},
-    'browser:state':browserState,'browser:hide':()=>{hideViews();return true;},'browser:newTab':({url,profile})=>createTab(url,profile),
-    'browser:activate':({id})=>{activate(id);return true;},'browser:closeTab':({id})=>{closeTab(id);return true;},
-    'browser:navigate':({id,url})=>{const t=tabs.get(id);if(!t)throw new Error('Вкладка не найдена');return t.view.webContents.loadURL(safeUrl(url)).then(()=>true);},
-    'browser:back':({id})=>{const wc=tabs.get(id)?.view.webContents;if(wc?.navigationHistory.canGoBack())wc.navigationHistory.goBack();return true;},
-    'browser:forward':({id})=>{const wc=tabs.get(id)?.view.webContents;if(wc?.navigationHistory.canGoForward())wc.navigationHistory.goForward();return true;},
-    'browser:reload':({id})=>{tabs.get(id)?.view.webContents.reload();return true;},
-    'browser:bounds':({visible,id,bounds})=>{hideViews();if(!visible)return true;const t=tabs.get(id);if(!t)return false;const area=main.getContentBounds();if(!bounds||!Object.values(bounds).every(Number.isFinite)||bounds.x<0||bounds.y<0||bounds.width<1||bounds.height<1||bounds.x+bounds.width>area.width+2||bounds.y+bounds.height>area.height+2)throw new Error('Некорректная область браузера');lastBounds=bounds;activeId=id;t.view.setBounds(bounds);t.view.setVisible(true);return true;},
-    'browser:downloads':()=>downloads,
-    'browser:openExternal':({url})=>shell.openExternal(safeUrl(url)).then(()=>true),
-    'browser:openDownload':async({id})=>{const d=downloads.find(d=>d.id===id&&d.state==='completed');if(!d?.path)throw new Error('Файл недоступен');if(/\.(exe|msi|bat|cmd|ps1|vbs|scr|com)$/i.test(d.path)){const a=await dialog.showMessageBox(main,{type:'warning',message:'Запустить скачанный исполняемый файл?',detail:d.path,buttons:['Отмена','Открыть'],defaultId:0,cancelId:0});if(a.response!==1)return false;}const error=await shell.openPath(d.path);if(error)throw new Error(error);return true;},
-    'display:move':({id})=>{const d=screen.getAllDisplays().find(d=>d.id===id);if(!d)throw new Error('Дисплей не найден');main.setFullScreen(false);main.setBounds(d.workArea);return true;},
-    'display:viewer':({id})=>createViewer(id),
-    'display:sources':()=>shell.openPath(app.isPackaged?join(process.resourcesPath,'virtual-display-source'):join(root,'native/virtual-display')).then(e=>{if(e)throw new Error(e);return true;}),
-    'file:pick':async()=>{const result=await dialog.showOpenDialog(main,{title:'Добавить файл в материалы',properties:['openFile']});if(result.canceled)return null;const path=result.filePaths[0];return {name:basename(path),path};},
-    'file:open':async({path})=>{const files=service.store.getSetting('materialFiles')||[];if(!files.some(f=>f.path===path))throw new Error('Файл не был выбран пользователем');if(!/\.(pdf|txt|md|csv|json|png|jpe?g|gif|webp|docx|xlsx|pptx|odt|ods|mp3|mp4|wav)$/i.test(path))throw new Error('Этот тип файла не открывается автоматически. Используйте Проводник.');const error=await shell.openPath(path);if(error)throw new Error(error);return true;},
-    'launcher:add':async()=>{if(process.platform!=='win32')throw new Error('Доступно только в Windows');const choice=await dialog.showOpenDialog(main,{title:'Выберите знакомую Windows-программу',filters:[{name:'Windows-программы',extensions:['exe']}],properties:['openFile']});if(choice.canceled)return null;const path=choice.filePaths[0];return service.store.save('launchers',{title:basename(path,'.exe'),path,args:[]});},
-    'launcher:run':async({id})=>{const l=service.store.get('launchers',id);if(!l||!l.path||extname(l.path).toLowerCase()!=='.exe'||!(await stat(l.path)).isFile())throw new Error('Программа недоступна');if(!Array.isArray(l.args)||!l.args.every(a=>typeof a==='string'))throw new Error('Некорректные аргументы');const confirmation=await dialog.showMessageBox(main,{type:'question',message:'Запустить Windows-программу?',detail:l.path,buttons:['Отмена','Запустить'],defaultId:0,cancelId:0});if(confirmation.response!==1)return false;const child=spawn(l.path,l.args,{shell:false,detached:true,stdio:'ignore',cwd:dirname(l.path)});return await new Promise((resolve,reject)=>{child.once('error',reject);child.once('spawn',()=>{child.unref();resolve(true);});});}
+function browserState() {
+  return {
+    tabs: [...tabs.values()].map((t) => ({
+      id: t.id,
+      url: t.url,
+      title: t.title,
+      private: t.private,
+      loading: t.view.webContents.isLoading(),
+      canGoBack: t.view.webContents.navigationHistory.canGoBack(),
+      canGoForward: t.view.webContents.navigationHistory.canGoForward(),
+    })),
+    activeId,
   };
-  ipcMain.handle('lifeos:invoke',async(event,action,args={})=>{if(!trusted(event))throw new Error('Forbidden IPC origin');if(typeof action!=='string'||JSON.stringify(args).length>10_000_000)throw new Error('Invalid IPC payload');if(Object.hasOwn(nativeActions,action))return nativeActions[action](args);return service.invoke(action,args);});
-  ipcMain.handle('lifeos:viewer-info',event=>{const info=viewers.get(event.sender.id);if(!info||!event.senderFrame.url.startsWith('life://viewer/'))throw new Error('Forbidden');return {label:info.display.label||'Дисплей',width:info.display.bounds.width,height:info.display.bounds.height};});
-  ipcMain.on('lifeos:viewer-input',(event,payload)=>{const info=viewers.get(event.sender.id);if(!info||event.senderFrame!==event.sender.mainFrame||!event.senderFrame.url.startsWith('life://viewer/'))return;try{if(['mouseMove','mouseDown','mouseUp','mouseWheel'].includes(payload.type)){const target=viewerTarget(info,payload);if(target){info.lastTarget=target.wc;target.wc.sendInputEvent({type:payload.type,x:target.x,y:target.y,button:payload.button,clickCount:Math.min(3,payload.clickCount||1),deltaX:Math.max(-1000,Math.min(1000,payload.deltaX||0)),deltaY:Math.max(-1000,Math.min(1000,payload.deltaY||0))});}}else if(['keyDown','keyUp','char'].includes(payload.type)&&typeof payload.keyCode==='string'&&payload.keyCode.length<30)(info.lastTarget||main.webContents).sendInputEvent({type:payload.type,keyCode:payload.keyCode,modifiers:payload.modifiers||[]});}catch{}});
-  screen.on('display-removed',()=>{if(main&&!main.isDestroyed()){const visible=screen.getAllDisplays().some(d=>{const b=main.getBounds();return b.x<d.bounds.x+d.bounds.width&&b.x+b.width>d.bounds.x&&b.y<d.bounds.y+d.bounds.height&&b.y+b.height>d.bounds.y;});if(!visible)main.setBounds(screen.getPrimaryDisplay().workArea);}});
-  await main.loadURL('life://app/index.html');
-  for(const t of (service.store.getSetting('browserTabs')||[]).slice(0,24))try{createTab(t.url,t.profile,{lazy:true,title:t.title});}catch{}
-  if(smoke){await new Promise(r=>setTimeout(r,900));const result=await main.webContents.executeJavaScript(`(async()=>({title:document.title,bridge:!!window.lifeos,state:(await window.lifeos.invoke('state')).tasks.length,body:document.body.innerText.includes('LifeOS')}))()`);if(!result.bridge||!result.body)throw new Error('Renderer smoke failed');await writeFile(join(userData,'smoke-result.json'),JSON.stringify({ok:true,...result,node:process.versions.node,electron:process.versions.electron}));app.quit();}
 }
-if(!app.requestSingleInstanceLock()&&!smoke)app.quit();else{app.on('second-instance',()=>{main?.show();main?.focus();});app.whenReady().then(setup).catch(async error=>{console.error(error);if(smokeDir)await writeFile(join(smokeDir,'smoke-error.txt'),String(error.stack||error)).catch(()=>{});app.exit(1);});}
-app.on('window-all-closed',()=>app.quit());app.on('before-quit',event=>{if(quitting||!service)return;event.preventDefault();quitting=true;void(async()=>{try{service.backup();}catch{}await service.close();app.quit();})();});
+function persistTabs() {
+  service.store.setSetting(
+    'browserTabs',
+    [...tabs.values()]
+      .filter((t) => !t.private)
+      .map((t) => ({ url: t.url, title: t.title, profile: t.profile }))
+      .slice(0, 24),
+  );
+}
+function sendTabs() {
+  emit('browser-state', browserState());
+}
+function safeUrl(raw) {
+  const url = new URL(String(raw));
+  if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password)
+    throw new Error('Разрешены только HTTP(S)-страницы без пароля в адресе');
+  return url.href;
+}
+function trusted(event) {
+  return (
+    main &&
+    !main.isDestroyed() &&
+    event.sender === main.webContents &&
+    event.senderFrame === main.webContents.mainFrame &&
+    event.senderFrame.url.startsWith('life://app/')
+  );
+}
+function hideViews() {
+  for (const t of tabs.values()) t.view.setVisible(false);
+}
+function activate(id) {
+  const t = tabs.get(id);
+  if (!t) throw new Error('Вкладка не найдена');
+  activeId = id;
+  hideViews();
+  if (lastBounds) {
+    t.view.setBounds(lastBounds);
+    t.view.setVisible(true);
+  }
+  if (t.lazy) {
+    t.lazy = false;
+    void t.view.webContents.loadURL(t.url).catch(() => {});
+  }
+  sendTabs();
+}
+function configureSession(s) {
+  if (configuredSessions.has(s)) return;
+  configuredSessions.add(s);
+  s.setPermissionCheckHandler(() => false);
+  s.setPermissionRequestHandler(async (wc, permission, callback, details) => {
+    if (
+      !['media', 'geolocation', 'notifications', 'clipboard-read', 'fullscreen'].includes(
+        permission,
+      )
+    )
+      return callback(false);
+    const origin = details.requestingUrl
+      ? new URL(details.requestingUrl).origin
+      : new URL(wc.getURL()).origin;
+    const answer = await dialog.showMessageBox(main, {
+      type: 'question',
+      title: 'Разрешение сайта',
+      message: `${origin} запрашивает: ${permission}`,
+      detail: 'Разрешение действует для этого запроса. Сайт не получает доступ к данным LifeOS.',
+      buttons: ['Запретить', 'Разрешить один раз'],
+      defaultId: 0,
+      cancelId: 0,
+    });
+    callback(answer.response === 1);
+  });
+  s.on('will-download', (_event, item) => {
+    const record = {
+      id: randomUUID(),
+      name: item.getFilename(),
+      url: item.getURL(),
+      received: 0,
+      total: item.getTotalBytes(),
+      state: 'progressing',
+      path: null,
+    };
+    downloads.unshift(record);
+    item.setSaveDialogOptions({
+      title: 'Сохранить загрузку Life Browser',
+      defaultPath: join(app.getPath('downloads'), basename(item.getFilename())),
+    });
+    item.on('updated', () => {
+      record.received = item.getReceivedBytes();
+      record.total = item.getTotalBytes();
+      emit('downloads', downloads);
+    });
+    item.once('done', (_e, state) => {
+      record.state = state;
+      record.path = item.getSavePath();
+      emit('downloads', downloads);
+    });
+    emit('downloads', downloads);
+  });
+}
+function createTab(url, profile = 'personal', { lazy = false, title } = {}) {
+  if (tabs.size >= 24) throw new Error('Открыто 24 вкладки. Закройте ненужные.');
+  url = safeUrl(url);
+  if (!['personal', 'work', 'private'].includes(profile)) throw new Error('Неизвестный профиль');
+  const id = randomUUID(),
+    partition = profile === 'private' ? 'private-' + id : 'persist:lifeos-' + profile;
+  const s = session.fromPartition(partition);
+  configureSession(s);
+  const view = new WebContentsView({
+    webPreferences: {
+      session: s,
+      nodeIntegration: false,
+      contextIsolation: true,
+      sandbox: true,
+      webSecurity: true,
+      allowRunningInsecureContent: false,
+      spellcheck: true,
+    },
+  });
+  view.setBackgroundColor('#ffffff');
+  main.contentView.addChildView(view);
+  view.setVisible(false);
+  const t = {
+    id,
+    url,
+    title: title || new URL(url).hostname,
+    view,
+    profile,
+    private: profile === 'private',
+    lazy,
+  };
+  tabs.set(id, t);
+  view.webContents.setWindowOpenHandler((details) => {
+    try {
+      createTab(details.url, profile);
+    } catch {}
+    return { action: 'deny' };
+  });
+  view.webContents.on('will-navigate', (event, target) => {
+    try {
+      safeUrl(target);
+    } catch {
+      event.preventDefault();
+    }
+  });
+  view.webContents.on('will-redirect', (event, target) => {
+    try {
+      safeUrl(target);
+    } catch {
+      event.preventDefault();
+    }
+  });
+  for (const event of ['did-start-loading', 'did-stop-loading'])
+    view.webContents.on(event, sendTabs);
+  view.webContents.on('did-navigate', (_event, target) => {
+    t.url = target;
+    persistTabs();
+    sendTabs();
+  });
+  view.webContents.on('page-title-updated', (_e, value) => {
+    t.title = value.slice(0, 300);
+    persistTabs();
+    sendTabs();
+  });
+  view.webContents.on('before-input-event', (e, input) => {
+    if (
+      input.type === 'keyDown' &&
+      (input.control || input.meta) &&
+      ['l', 'k', 't', 'w'].includes(input.key.toLowerCase())
+    ) {
+      e.preventDefault();
+      const key = input.key.toLowerCase();
+      if (key === 'w') {
+        closeTab(id);
+        return;
+      }
+      if (key === 'k' || key === 't') hideViews();
+      main.webContents.focus();
+      emit('browser-shortcut', key);
+    }
+  });
+  if (!lazy) {
+    activeId = id;
+    hideViews();
+    if (lastBounds) {
+      view.setBounds(lastBounds);
+      view.setVisible(true);
+    }
+    void view.webContents.loadURL(url).catch(() => {
+      t.title = 'Не удалось открыть страницу';
+      sendTabs();
+    });
+  }
+  sendTabs();
+  return { id };
+}
+function closeTab(id) {
+  const t = tabs.get(id);
+  if (!t) return;
+  const privateSession = t.private ? t.view.webContents.session : null;
+  main.contentView.removeChildView(t.view);
+  t.view.webContents.close();
+  tabs.delete(id);
+  if (privateSession) {
+    void privateSession.clearStorageData().catch(() => {});
+    void privateSession.clearCache().catch(() => {});
+  }
+  if (activeId === id) {
+    activeId = null;
+    hideViews();
+  }
+  persistTabs();
+  sendTabs();
+}
+function displayList() {
+  const primary = screen.getPrimaryDisplay().id;
+  return screen.getAllDisplays().map((d) => ({
+    id: d.id,
+    label: d.label,
+    bounds: d.bounds,
+    scaleFactor: d.scaleFactor,
+    primary: d.id === primary,
+    virtual: /lifeos/i.test(d.label || ''),
+  }));
+}
+async function createViewer(id) {
+  const display = screen.getAllDisplays().find((d) => d.id === id);
+  if (!display) throw new Error('Дисплей не найден');
+  const primary = screen.getPrimaryDisplay();
+  if (display.id === primary.id)
+    throw new Error(
+      'Viewer не захватывает основной монитор: это предотвращает рекурсивное зеркало.',
+    );
+  const sources = await desktopCapturer.getSources({
+    types: ['screen'],
+    thumbnailSize: { width: 0, height: 0 },
+  });
+  const source = sources.find((s) => String(s.display_id) === String(display.id));
+  if (!source) throw new Error('Этот дисплей недоступен для захвата в текущей сессии.');
+  const part = 'viewer-' + randomUUID(),
+    s = session.fromPartition(part);
+  s.protocol.handle('life', handleLife);
+  s.setDisplayMediaRequestHandler((_request, callback) => callback({ video: source }));
+  s.setPermissionRequestHandler((_wc, p, cb) => cb(p === 'display-capture'));
+  const viewer = new BrowserWindow({
+    width: 1060,
+    height: 700,
+    x: primary.workArea.x + 40,
+    y: primary.workArea.y + 40,
+    title: 'LifeOS Viewer',
+    backgroundColor: '#101713',
+    webPreferences: {
+      partition: part,
+      preload: join(here, 'viewer-preload.cjs'),
+      nodeIntegration: false,
+      contextIsolation: true,
+      sandbox: true,
+    },
+  });
+  const viewerId = viewer.webContents.id;
+  viewers.set(viewerId, { window: viewer, display });
+  viewer.on('closed', () => viewers.delete(viewerId));
+  await viewer.loadURL('life://viewer/viewer.html');
+  return true;
+}
+function viewerTarget(info, payload) {
+  if (!Number.isFinite(payload.x) || !Number.isFinite(payload.y)) return null;
+  const wx = info.display.bounds.x + payload.x / info.display.scaleFactor,
+    wy = info.display.bounds.y + payload.y / info.display.scaleFactor;
+  const b = main.getContentBounds(),
+    x = Math.round(wx - b.x),
+    y = Math.round(wy - b.y);
+  if (x < 0 || y < 0 || x > b.width || y > b.height) return null;
+  const t = tabs.get(activeId);
+  if (
+    t &&
+    t.view.getVisible() &&
+    lastBounds &&
+    x >= lastBounds.x &&
+    x < lastBounds.x + lastBounds.width &&
+    y >= lastBounds.y &&
+    y < lastBounds.y + lastBounds.height
+  )
+    return { wc: t.view.webContents, x: x - lastBounds.x, y: y - lastBounds.y };
+  return { wc: main.webContents, x, y };
+}
+async function setup() {
+  const userData = app.getPath('userData');
+  await mkdir(userData, { recursive: true });
+  service = createService(userData, { autoCrawl: !smoke });
+  handleLife = async (request) => {
+    try {
+      const url = new URL(request.url);
+      let base;
+      if (url.host === 'app') base = dist;
+      else if (url.host === 'viewer') base = here;
+      else return new Response('Forbidden', { status: 403 });
+      const path = resolve(base, '.' + decodeURIComponent(url.pathname));
+      if (!path.startsWith(base + sep)) return new Response('Forbidden', { status: 403 });
+      const mime =
+        {
+          '.html': 'text/html; charset=utf-8',
+          '.js': 'application/javascript',
+          '.css': 'text/css',
+          '.svg': 'image/svg+xml',
+          '.png': 'image/png',
+          '.woff2': 'font/woff2',
+          '.ico': 'image/x-icon',
+        }[extname(path)] || 'application/octet-stream';
+      return new Response(await readFile(path), {
+        headers: {
+          'content-type': mime,
+          'content-security-policy':
+            "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; media-src blob:; object-src 'none'; base-uri 'self'",
+        },
+      });
+    } catch {
+      return new Response('Not found', { status: 404 });
+    }
+  };
+  protocol.handle('life', handleLife);
+  main = new BrowserWindow({
+    width: 1440,
+    height: 940,
+    minWidth: 820,
+    minHeight: 620,
+    show: !smoke,
+    title: 'LifeOS',
+    backgroundColor: '#101713',
+    autoHideMenuBar: true,
+    icon: join(root, 'public/icon.png'),
+    webPreferences: {
+      preload: join(here, 'preload.cjs'),
+      nodeIntegration: false,
+      contextIsolation: true,
+      sandbox: true,
+      webSecurity: true,
+    },
+  });
+  main.removeMenu();
+  main.on('close', (event) => {
+    if (smoke || quitting || closeApproved) return;
+    event.preventDefault();
+    if (closeTimer) return;
+    hideViews();
+    emit('prepare-close', {});
+    closeTimer = setTimeout(async () => {
+      closeTimer = null;
+      const answer = await dialog.showMessageBox(main, {
+        type: 'warning',
+        message: 'Интерфейс не подтвердил сохранение черновиков.',
+        detail:
+          'Можно остаться в приложении или закрыть его с риском потери последних несохранённых изменений.',
+        buttons: ['Остаться', 'Закрыть без подтверждения'],
+        defaultId: 0,
+        cancelId: 0,
+      });
+      if (answer.response === 1) {
+        closeApproved = true;
+        main.close();
+      }
+    }, 10000);
+  });
+  main.webContents.setWindowOpenHandler(({ url }) => {
+    try {
+      void shell.openExternal(safeUrl(url));
+    } catch {}
+    return { action: 'deny' };
+  });
+  main.webContents.on('will-navigate', (e, url) => {
+    if (!url.startsWith('life://app/')) e.preventDefault();
+  });
+  const nativeActions = {
+    capabilities: () => ({
+      desktop: true,
+      platform: process.platform,
+      nativeBrowser: true,
+      virtualDisplay: displayList().some((d) => d.virtual),
+      version: app.getVersion(),
+    }),
+    displays: displayList,
+    'window:readyToClose': () => {
+      clearTimeout(closeTimer);
+      closeTimer = null;
+      closeApproved = true;
+      main.close();
+      return true;
+    },
+    'window:cancelClose': () => {
+      clearTimeout(closeTimer);
+      closeTimer = null;
+      return true;
+    },
+    'window:fullscreen': () => {
+      main.setFullScreen(!main.isFullScreen());
+      return true;
+    },
+    notify: ({ title, body }) => {
+      if (Notification.isSupported())
+        new Notification({
+          title: String(title).slice(0, 100),
+          body: String(body).slice(0, 400),
+        }).show();
+      return true;
+    },
+    'browser:state': browserState,
+    'browser:hide': () => {
+      hideViews();
+      activeId = null;
+      sendTabs();
+      return true;
+    },
+    'browser:newTab': ({ url, profile }) => createTab(url, profile),
+    'browser:activate': ({ id }) => {
+      activate(id);
+      return true;
+    },
+    'browser:closeTab': ({ id }) => {
+      closeTab(id);
+      return true;
+    },
+    'browser:navigate': ({ id, url }) => {
+      const t = tabs.get(id);
+      if (!t) throw new Error('Вкладка не найдена');
+      return t.view.webContents.loadURL(safeUrl(url)).then(() => true);
+    },
+    'browser:back': ({ id }) => {
+      const wc = tabs.get(id)?.view.webContents;
+      if (wc?.navigationHistory.canGoBack()) wc.navigationHistory.goBack();
+      return true;
+    },
+    'browser:forward': ({ id }) => {
+      const wc = tabs.get(id)?.view.webContents;
+      if (wc?.navigationHistory.canGoForward()) wc.navigationHistory.goForward();
+      return true;
+    },
+    'browser:reload': ({ id }) => {
+      tabs.get(id)?.view.webContents.reload();
+      return true;
+    },
+    'browser:bounds': ({ visible, id, bounds }) => {
+      if (!visible) {
+        hideViews();
+        return true;
+      }
+      const t = tabs.get(id);
+      if (!t) return false;
+      if (
+        t.view.getVisible() &&
+        activeId === id &&
+        lastBounds &&
+        JSON.stringify(lastBounds) === JSON.stringify(bounds)
+      )
+        return true;
+      hideViews();
+      const area = main.getContentBounds();
+      if (
+        !bounds ||
+        !Object.values(bounds).every(Number.isFinite) ||
+        bounds.x < 0 ||
+        bounds.y < 0 ||
+        bounds.width < 1 ||
+        bounds.height < 1 ||
+        bounds.x + bounds.width > area.width + 2 ||
+        bounds.y + bounds.height > area.height + 2
+      )
+        throw new Error('Некорректная область браузера');
+      lastBounds = bounds;
+      activeId = id;
+      t.view.setBounds(bounds);
+      t.view.setVisible(true);
+      return true;
+    },
+    'browser:downloads': () => downloads,
+    'browser:openExternal': ({ url }) => shell.openExternal(safeUrl(url)).then(() => true),
+    'browser:openDownload': async ({ id }) => {
+      const d = downloads.find((d) => d.id === id && d.state === 'completed');
+      if (!d?.path) throw new Error('Файл недоступен');
+      if (/\.(exe|msi|bat|cmd|ps1|vbs|scr|com)$/i.test(d.path)) {
+        const a = await dialog.showMessageBox(main, {
+          type: 'warning',
+          message: 'Запустить скачанный исполняемый файл?',
+          detail: d.path,
+          buttons: ['Отмена', 'Открыть'],
+          defaultId: 0,
+          cancelId: 0,
+        });
+        if (a.response !== 1) return false;
+      }
+      const error = await shell.openPath(d.path);
+      if (error) throw new Error(error);
+      return true;
+    },
+    'display:move': ({ id }) => {
+      const d = screen.getAllDisplays().find((d) => d.id === id);
+      if (!d) throw new Error('Дисплей не найден');
+      main.setFullScreen(false);
+      main.setBounds(d.workArea);
+      return true;
+    },
+    'display:viewer': ({ id }) => createViewer(id),
+    'display:sources': () =>
+      shell
+        .openPath(
+          app.isPackaged
+            ? join(process.resourcesPath, 'virtual-display-source')
+            : join(root, 'native/virtual-display'),
+        )
+        .then((e) => {
+          if (e) throw new Error(e);
+          return true;
+        }),
+    'file:pick': async () => {
+      const result = await dialog.showOpenDialog(main, {
+        title: 'Добавить файл в материалы',
+        properties: ['openFile'],
+      });
+      if (result.canceled) return null;
+      const path = result.filePaths[0];
+      return { name: basename(path), path };
+    },
+    'file:open': async ({ path }) => {
+      const files = service.store.getSetting('materialFiles') || [];
+      if (!files.some((f) => f.path === path)) throw new Error('Файл не был выбран пользователем');
+      if (
+        !/\.(pdf|txt|md|csv|json|png|jpe?g|gif|webp|docx|xlsx|pptx|odt|ods|mp3|mp4|wav)$/i.test(
+          path,
+        )
+      )
+        throw new Error('Этот тип файла не открывается автоматически. Используйте Проводник.');
+      const error = await shell.openPath(path);
+      if (error) throw new Error(error);
+      return true;
+    },
+    'launcher:add': async () => {
+      if (process.platform !== 'win32') throw new Error('Доступно только в Windows');
+      const choice = await dialog.showOpenDialog(main, {
+        title: 'Выберите знакомую Windows-программу',
+        filters: [{ name: 'Windows-программы', extensions: ['exe'] }],
+        properties: ['openFile'],
+      });
+      if (choice.canceled) return null;
+      const path = choice.filePaths[0];
+      return service.store.save('launchers', { title: basename(path, '.exe'), path, args: [] });
+    },
+    'launcher:run': async ({ id }) => {
+      const l = service.store.get('launchers', id);
+      if (
+        !l ||
+        !l.path ||
+        extname(l.path).toLowerCase() !== '.exe' ||
+        !(await stat(l.path)).isFile()
+      )
+        throw new Error('Программа недоступна');
+      if (!Array.isArray(l.args) || !l.args.every((a) => typeof a === 'string'))
+        throw new Error('Некорректные аргументы');
+      const confirmation = await dialog.showMessageBox(main, {
+        type: 'question',
+        message: 'Запустить Windows-программу?',
+        detail: l.path,
+        buttons: ['Отмена', 'Запустить'],
+        defaultId: 0,
+        cancelId: 0,
+      });
+      if (confirmation.response !== 1) return false;
+      const child = spawn(l.path, l.args, {
+        shell: false,
+        detached: true,
+        stdio: 'ignore',
+        cwd: dirname(l.path),
+      });
+      return await new Promise((resolve, reject) => {
+        child.once('error', reject);
+        child.once('spawn', () => {
+          child.unref();
+          resolve(true);
+        });
+      });
+    },
+  };
+  ipcMain.handle('lifeos:invoke', async (event, action, args = {}) => {
+    if (!trusted(event)) throw new Error('Forbidden IPC origin');
+    if (typeof action !== 'string' || JSON.stringify(args).length > 10_000_000)
+      throw new Error('Invalid IPC payload');
+    if (Object.hasOwn(nativeActions, action)) return nativeActions[action](args);
+    return service.invoke(action, args);
+  });
+  ipcMain.handle('lifeos:viewer-info', (event) => {
+    const info = viewers.get(event.sender.id);
+    if (!info || !event.senderFrame.url.startsWith('life://viewer/')) throw new Error('Forbidden');
+    return {
+      label: info.display.label || 'Дисплей',
+      width: info.display.bounds.width,
+      height: info.display.bounds.height,
+    };
+  });
+  ipcMain.on('lifeos:viewer-input', (event, payload) => {
+    const info = viewers.get(event.sender.id);
+    if (
+      !info ||
+      event.senderFrame !== event.sender.mainFrame ||
+      !event.senderFrame.url.startsWith('life://viewer/')
+    )
+      return;
+    try {
+      if (['mouseMove', 'mouseDown', 'mouseUp', 'mouseWheel'].includes(payload.type)) {
+        const target = viewerTarget(info, payload);
+        if (target) {
+          info.lastTarget = target.wc;
+          target.wc.sendInputEvent({
+            type: payload.type,
+            x: target.x,
+            y: target.y,
+            button: payload.button,
+            clickCount: Math.min(3, payload.clickCount || 1),
+            deltaX: Math.max(-1000, Math.min(1000, payload.deltaX || 0)),
+            deltaY: Math.max(-1000, Math.min(1000, payload.deltaY || 0)),
+          });
+        }
+      } else if (
+        ['keyDown', 'keyUp', 'char'].includes(payload.type) &&
+        typeof payload.keyCode === 'string' &&
+        payload.keyCode.length < 30
+      )
+        (info.lastTarget || main.webContents).sendInputEvent({
+          type: payload.type,
+          keyCode: payload.keyCode,
+          modifiers: payload.modifiers || [],
+        });
+    } catch {}
+  });
+  screen.on('display-removed', () => {
+    if (main && !main.isDestroyed()) {
+      const visible = screen.getAllDisplays().some((d) => {
+        const b = main.getBounds();
+        return (
+          b.x < d.bounds.x + d.bounds.width &&
+          b.x + b.width > d.bounds.x &&
+          b.y < d.bounds.y + d.bounds.height &&
+          b.y + b.height > d.bounds.y
+        );
+      });
+      if (!visible) main.setBounds(screen.getPrimaryDisplay().workArea);
+    }
+  });
+  await main.loadURL('life://app/index.html');
+  for (const t of (service.store.getSetting('browserTabs') || []).slice(0, 24))
+    try {
+      createTab(t.url, t.profile, { lazy: true, title: t.title });
+    } catch {}
+  if (smoke) {
+    const { runSmoke } = await import('./smoke.mjs');
+    const result = await runSmoke({ main, nativeActions, service, tabs });
+    await writeFile(join(userData, 'smoke-result.json'), JSON.stringify(result, null, 2));
+    app.quit();
+  }
+}
+if (!app.requestSingleInstanceLock() && !smoke) app.quit();
+else {
+  app.on('second-instance', () => {
+    main?.show();
+    main?.focus();
+  });
+  app
+    .whenReady()
+    .then(setup)
+    .catch(async (error) => {
+      console.error(error);
+      if (smokeDir)
+        await writeFile(join(smokeDir, 'smoke-error.txt'), String(error.stack || error)).catch(
+          () => {},
+        );
+      app.exit(1);
+    });
+}
+app.on('window-all-closed', () => app.quit());
+app.on('before-quit', (event) => {
+  if (quitting || !service) return;
+  event.preventDefault();
+  quitting = true;
+  void (async () => {
+    try {
+      service.backup();
+    } catch {}
+    await service.close();
+    app.quit();
+  })();
+});

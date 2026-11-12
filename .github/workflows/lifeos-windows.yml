@@ -20,6 +20,8 @@ jobs:
           node-version: '22'
           cache: npm
       - run: npm ci --no-audit --no-fund
+      - run: npm run format:check
+      - run: npm audit --omit=dev --audit-level=high
       - run: npm test
       - run: npm run build
       - name: Smoke-test Electron renderer and SQLite
@@ -27,7 +29,7 @@ jobs:
         run: |
           $env:LIFEOS_SMOKE_DIR = Join-Path $env:RUNNER_TEMP 'lifeos-source-smoke'
           New-Item -ItemType Directory -Force $env:LIFEOS_SMOKE_DIR | Out-Null
-          node node_modules/electron/cli.js . --smoke-test
+          node scripts/smoke-electron.mjs
           if ($LASTEXITCODE -ne 0) { throw 'Electron source smoke failed' }
           $file = Join-Path $env:LIFEOS_SMOKE_DIR 'smoke-result.json'
           if (!(Test-Path $file)) { throw 'No Electron smoke result' }
@@ -41,8 +43,10 @@ jobs:
           $env:LIFEOS_SMOKE_DIR = Join-Path $env:RUNNER_TEMP 'lifeos-packaged-smoke'
           New-Item -ItemType Directory -Force $env:LIFEOS_SMOKE_DIR | Out-Null
           $app = Join-Path (Get-Location) 'release/win-unpacked/LifeOS.exe'
-          $process = Start-Process -FilePath $app -ArgumentList '--smoke-test' -PassThru -Wait
-          if ($process.ExitCode -ne 0) { throw "Packaged smoke failed: $($process.ExitCode)" }
+          $env:LIFEOS_EXE = $app
+          node scripts/smoke-electron.mjs
+          if ($LASTEXITCODE -ne 0) { throw 'Packaged smoke failed' }
+          Remove-Item Env:LIFEOS_EXE
           $file = Join-Path $env:LIFEOS_SMOKE_DIR 'smoke-result.json'
           if (!(Test-Path $file)) { throw 'No packaged smoke result' }
           Copy-Item $file release/Windows-smoke.json
@@ -66,6 +70,12 @@ jobs:
           Compress-Archive -Path search-package/* -DestinationPath release/LifeOS-0.1.0-SearchServer.zip
           $assets = Get-ChildItem release -File | Where-Object { $_.Extension -in '.exe','.zip','.json' -and $_.Name -notlike 'builder-*' }
           $assets | ForEach-Object { $hash=(Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower(); "$hash  $($_.Name)" } | Set-Content -Encoding utf8 release/SHA256SUMS.txt
+      - name: Archive runtime diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: LifeOS-runtime-diagnostics
+          path: ${{ runner.temp }}/lifeos-*-smoke/*
       - uses: actions/upload-artifact@v4
         with:
           name: LifeOS-Windows-preview
