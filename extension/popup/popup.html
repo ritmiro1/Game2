@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Ладья — вкладки и шахматы</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="popup-shell">
+    <header class="topbar">
+      <a class="brand" href="#top" aria-label="Ладья — главная">
+        <span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 40 40"><path d="M11 8h5v5h4V8h5v5h4V8h3v9l-3 3v12H11V20l-3-3V8h3zm1 4v3l3 3h13l3-3v-3h-1v4h-8v-4h-1v4h-8v-4zm1 10v8h14v-8z" fill="currentColor"/><path d="M15 25h10v2H15z" fill="#d4aa69"/></svg></span>
+        <span><strong>ЛАДЬЯ</strong><small>шахматы и вкладки</small></span>
+      </a>
+      <span class="local-badge"><i></i> локально</span>
+    </header>
+
+    <main id="top">
+      <section class="hero-card">
+        <div class="hero-kicker"><span>01</span> ЛОКАЛЬНЫЙ ТРЕНЕР</div>
+        <h1>Думай лучше.<br><em>Работай тише.</em></h1>
+        <p>Тренируйся против шахматного движка и держи браузер в порядке — без отправки данных в сеть.</p>
+        <button class="primary-button" id="open-chess" type="button">
+          <span class="button-icon">♘</span>
+          <span>Открыть шахматную комнату<small>тренировка и игра без подсказок</small></span>
+          <svg class="arrow-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M4 10h11M10 5l5 5-5 5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+      </section>
+
+      <section class="stats-row" aria-label="Состояние браузера">
+        <div class="stat-card"><span class="stat-icon icon-tabs">▤</span><strong id="stat-tabs">—</strong><small>вкладок</small></div>
+        <div class="stat-card"><span class="stat-icon icon-sleep">◌</span><strong id="stat-sleeping">—</strong><small>в режиме сна</small></div>
+        <div class="stat-card"><span class="stat-icon icon-sound">♫</span><strong id="stat-audible">—</strong><small>со звуком</small></div>
+      </section>
+
+      <section class="section-card restore-card">
+        <div class="section-heading">
+          <div><div class="section-label">ИСТОРИЯ</div><h2>Закрытые вкладки</h2></div>
+          <button class="text-button" id="restore-last" type="button" title="Восстановить последнюю закрытую вкладку">Вернуть последнюю <span>↗</span></button>
+        </div>
+        <div id="recent-list" class="recent-list" aria-live="polite"></div>
+      </section>
+
+      <section class="section-card memory-card">
+        <div class="section-heading memory-heading">
+          <div><div class="section-label">ПАМЯТЬ</div><h2>Спящий режим</h2></div>
+          <span class="safety-pill"><span></span> звук защищён</span>
+        </div>
+        <p class="section-copy">Неактивные вкладки выгружаются из памяти, но остаются открытыми. Вкладки с воспроизведением не трогаем.</p>
+        <div class="memory-controls">
+          <label class="switch-line" for="auto-discard">
+            <span class="switch"><input id="auto-discard" type="checkbox"><i></i></span>
+            <span><strong>Автоматически</strong><small>проверять раз в 15 минут</small></span>
+          </label>
+          <label class="threshold-control" for="idle-minutes"><span>После</span>
+            <select id="idle-minutes" aria-label="Неактивность вкладки">
+              <option value="15">15 мин</option>
+              <option value="30">30 мин</option>
+              <option value="60">1 часа</option>
+              <option value="120">2 часов</option>
+              <option value="240">4 часов</option>
+            </select>
+          </label>
+        </div>
+        <button class="secondary-button full-button" id="discard-now" type="button"><span>⏾</span> Перевести старые вкладки в сон</button>
+      </section>
+
+      <section class="section-card sound-card">
+        <div class="section-heading">
+          <div><div class="section-label">ЗВУК</div><h2>Управление вкладками</h2></div>
+          <span class="small-count" id="sound-count">0</span>
+        </div>
+        <div id="tab-list" class="tab-list" aria-live="polite"></div>
+      </section>
+
+      <footer class="footer-note"><span class="privacy-dot"></span> Шахматные партии и настройки хранятся только на этом устройстве.</footer>
+    </main>
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>

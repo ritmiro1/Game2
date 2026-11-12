@@ -1,0 +1,12 @@
+{
+  "name": "ladya-browser-chess-extension",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Локальное расширение для вкладок и шахматной тренировки в Яндекс Браузере",
+  "scripts": {
+    "check": "node scripts/check-extension.mjs",
+    "test": "node --test tests/*.test.mjs",
+    "dev": "python3 -m http.server 4173 --bind 0.0.0.0 --directory extension"
+  }
+}

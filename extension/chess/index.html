@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Шахматная комната — Ладья</title>
+  <link rel="stylesheet" href="chess.css">
+</head>
+<body>
+  <div class="workspace">
+    <header class="app-header">
+      <a class="brand-lockup" href="../popup/popup.html" title="Инструменты браузера">
+        <span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 40 40"><path d="M11 8h5v5h4V8h5v5h4V8h3v9l-3 3v12H11V20l-3-3V8h3zm1 4v3l3 3h13l3-3v-3h-1v4h-8v-4h-1v4h-8v-4zm1 10v8h14v-8z" fill="currentColor"/><path d="M15 25h10v2H15z" fill="#d4aa69"/></svg></span>
+        <span><strong>ЛАДЬЯ</strong><small>локальный шахматный тренер</small></span>
+      </a>
+      <div class="header-title"><span class="eyebrow">ШАХМАТНАЯ КОМНАТА</span><h1>Тренируй понимание позиции</h1></div>
+      <div class="header-actions">
+        <span class="privacy-pill"><i></i> данные не покидают устройство</span>
+        <button class="icon-button close-button" id="close-window" title="Закрыть окно" aria-label="Закрыть окно">×</button>
+      </div>
+    </header>
+
+    <main class="main-layout">
+      <section class="board-column" aria-label="Шахматная доска">
+        <div class="opponent-card player-card">
+          <div class="player-avatar bot-avatar">♚</div>
+          <div class="player-name"><strong>Ладья · локальный движок</strong><small id="bot-level-label">Соперник · клубный уровень</small></div>
+          <span class="player-indicator" id="bot-indicator">●</span>
+          <span class="material-count" id="bot-material"></span>
+        </div>
+
+        <div class="board-stage">
+          <div class="eval-rail" aria-label="Оценка позиции"><div class="eval-black" id="eval-bar"><span id="eval-bar-score">0.0</span></div></div>
+          <div class="board-wrap" id="board-wrap">
+            <div class="board-frame">
+              <div class="board-surface" id="board-surface">
+                <div class="board-grid" id="chessboard" role="grid" aria-label="Шахматная доска"></div>
+                <svg class="arrow-layer" id="arrow-layer" viewBox="0 0 8 8" aria-hidden="true">
+                  <defs>
+                    <marker id="arrow-head-best" markerWidth="6" markerHeight="6" refX="4.5" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L6,3 L0,6 z" fill="#44b875"/></marker>
+                    <marker id="arrow-head-threat" markerWidth="6" markerHeight="6" refX="4.5" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L6,3 L0,6 z" fill="#f0a347"/></marker>
+                    <marker id="arrow-head-alt" markerWidth="6" markerHeight="6" refX="4.5" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L6,3 L0,6 z" fill="#55a2cb"/></marker>
+                  </defs>
+                  <g id="arrow-lines"></g>
+                </svg>
+                <div class="board-overlay" id="board-overlay" hidden></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="human-card player-card">
+          <div class="player-avatar human-avatar" id="human-avatar">♙</div>
+          <div class="player-name"><strong>Ты</strong><small id="human-color-label">Белые · ход за тобой</small></div>
+          <span class="player-indicator human-clock" id="human-indicator">00:00</span>
+          <span class="material-count" id="human-material"></span>
+        </div>
+
+        <div class="board-actions">
+          <div class="history-controls" aria-label="Навигация по ходам">
+            <button class="history-arrow" id="undo-move" type="button" title="Отменить ход" aria-label="Отменить ход" disabled><span>←</span></button>
+            <div class="history-label"><strong id="move-index-label">Стартовая позиция</strong><small>стрелки · назад / вперёд по партии</small></div>
+            <button class="history-arrow" id="redo-move" type="button" title="Вернуть ход" aria-label="Вернуть ход" disabled><span>→</span></button>
+          </div>
+          <div class="board-action-buttons">
+            <button class="ghost-button" id="flip-board" type="button" title="Перевернуть доску"><span>↻</span> Перевернуть</button>
+            <button class="solid-button" id="new-game" type="button"><span>＋</span> Новая партия</button>
+          </div>
+        </div>
+        <div class="move-history-card">
+          <div class="history-card-heading"><div><span class="eyebrow">ЗАПИСЬ ПАРТИИ</span><strong>Ходы</strong></div><button class="copy-pgn" id="copy-pgn" type="button" title="Скопировать запись PGN">Копировать PGN</button></div>
+          <div class="moves-list" id="moves-list" aria-live="polite"><div class="moves-empty">Сделай первый ход — тренер разберёт каждый.</div></div>
+        </div>
+      </section>
+
+      <aside class="coach-column">
+        <div class="side-card mode-card">
+          <div class="side-card-header"><div><span class="eyebrow">ВЫБЕРИ ФОРМАТ</span><h2>Как играем?</h2></div><span class="online-indicator"><i></i> офлайн</span></div>
+          <div class="mode-switch" role="tablist" aria-label="Режим игры">
+            <button class="mode-option is-active" id="mode-coach" type="button" data-mode="coach" aria-pressed="true"><span class="mode-symbol">✦</span><span><strong>Тренировка</strong><small>разбор каждого хода</small></span></button>
+            <button class="mode-option" id="mode-test" type="button" data-mode="test" aria-pressed="false"><span class="mode-symbol">◈</span><span><strong>Проверка себя</strong><small>без пометок и подсказок</small></span></button>
+          </div>
+          <div class="game-controls">
+            <label class="field-label" for="bot-level">Сила соперника</label>
+            <div class="select-wrap"><select id="bot-level">
+              <option value="beginner">Начинающий</option>
+              <option value="casual">Любитель</option>
+              <option value="club" selected>Клубный</option>
+              <option value="strong">Сильный</option>
+              <option value="expert">Эксперт</option>
+            </select><span>⌄</span></div>
+            <label class="field-label color-label" for="play-as">Играть за</label>
+            <div class="select-wrap"><select id="play-as">
+              <option value="white" selected>Белых</option>
+              <option value="black">Чёрных</option>
+              <option value="random">Случайный цвет</option>
+            </select><span>⌄</span></div>
+          </div>
+          <button class="start-button" id="start-game" type="button"><span>Начать партию</span><b>↗</b></button>
+        </div>
+
+        <div class="side-card coach-card" id="coach-card">
+          <div class="side-card-header"><div><span class="eyebrow">ПОСЛЕ ХОДА</span><h2>Комментарий тренера</h2></div><span class="voice-state" id="voice-state">Голос выкл.</span></div>
+          <div class="move-verdict" id="move-verdict"><span class="verdict-icon" id="verdict-icon">✦</span><div><strong id="verdict-title">Готов к партии</strong><small id="verdict-score">Локальный анализ Stockfish</small></div></div>
+          <p class="coach-quote" id="coach-comment">Сделай ход. Я оценю идею, отмечу тактические угрозы и объясню лучший план.</p>
+          <div class="coach-detail" id="coach-detail" hidden></div>
+          <div class="coach-tags" id="coach-tags"><span class="coach-tag"><i></i> каждый ход</span><span class="coach-tag muted-tag">анализ остаётся на устройстве</span></div>
+          <div class="coach-footer"><span class="engine-status" id="engine-status"><i></i> Загружаю движок…</span><button class="speak-again" id="speak-again" type="button" title="Повторить комментарий" aria-label="Повторить комментарий" disabled>◖))</button></div>
+        </div>
+
+        <div class="side-card settings-card">
+          <div class="settings-head"><div><span class="eyebrow">ПОД СЕБЯ</span><h2>Доска и подсказки</h2></div><button class="settings-toggle" id="settings-toggle" aria-expanded="true" type="button">−</button></div>
+          <div class="settings-body" id="settings-body">
+            <div class="setting-row select-setting"><div><strong>Оформление доски</strong><small>Цвет клеток</small></div><div class="select-wrap compact-select"><select id="board-theme" aria-label="Оформление доски"><option value="forest">Лес</option><option value="classic">Классика</option><option value="ocean">Океан</option><option value="sand">Песок</option></select><span>⌄</span></div></div>
+            <div class="setting-row select-setting"><div><strong>Фигуры</strong><small>Контраст отображения</small></div><div class="select-wrap compact-select"><select id="piece-style" aria-label="Стиль фигур"><option value="classic">Классика</option><option value="contrast">Контрастные</option></select><span>⌄</span></div></div>
+            <div class="setting-row slider-setting"><div><strong>Размер доски</strong><small><span id="board-size-value">min(62vw, 620px)</span></small></div><input id="board-size" type="range" min="360" max="700" step="10" value="620" aria-label="Размер доски"></div>
+            <div class="setting-check-grid">
+              <label class="check-setting"><input id="show-coordinates" type="checkbox" checked><span class="check-box"></span><span>Координаты</span></label>
+              <label class="check-setting"><input id="show-legal-moves" type="checkbox" checked><span class="check-box"></span><span>Возможные ходы</span></label>
+              <label class="check-setting"><input id="show-annotations" type="checkbox" checked><span class="check-box"></span><span>Оценки ходов</span></label>
+              <label class="check-setting"><input id="show-best-arrow" type="checkbox" checked><span class="check-box"></span><span>Подсказка-стрелка</span></label>
+              <label class="check-setting"><input id="show-threat-lines" type="checkbox" checked><span class="check-box"></span><span>Линии угроз</span></label>
+              <label class="check-setting"><input id="show-comments" type="checkbox" checked><span class="check-box"></span><span>Комментарий текста</span></label>
+              <label class="check-setting"><input id="speak-comments" type="checkbox" checked><span class="check-box"></span><span>Озвучивать ходы</span></label>
+            </div>
+            <div class="setting-row voice-select-setting"><div><strong>Голос тренера</strong><small>Система или встроенный eSpeak</small></div><div class="select-wrap compact-select"><select id="speech-voice" aria-label="Локальный голос"><option value="">Автовыбор</option></select><span>⌄</span></div></div>
+            <div class="setting-row voice-setting"><div><strong>Скорость речи</strong><small>Скорость синтеза на устройстве</small></div><input id="speech-rate" type="range" min="0.75" max="1.25" step="0.05" value="0.95" aria-label="Скорость озвучивания"><span id="speech-rate-value">0.95×</span></div>
+            <div class="setting-row depth-setting"><div><strong>Глубина анализа</strong><small>Точность и нагрузка на компьютер</small></div><div class="select-wrap compact-select"><select id="coach-depth" aria-label="Глубина анализа"><option value="7">Быстро</option><option value="9" selected>Сбалансировано</option><option value="11">Точнее</option></select><span>⌄</span></div></div>
+            <div class="local-voice-note" id="local-voice-note">Русский голос eSpeak встроен в расширение и работает офлайн; также доступны голоса системы.</div>
+          </div>
+        </div>
+        <div class="privacy-footnote"><span>♙</span> Stockfish, партии и голосовая озвучка работают локально. Сетевых запросов нет.</div>
+      </aside>
+    </main>
+
+    <div class="modal-backdrop" id="promotion-modal" hidden>
+      <div class="modal-card promotion-card" role="dialog" aria-modal="true" aria-labelledby="promotion-title">
+        <span class="eyebrow">ПРЕВРАЩЕНИЕ ПЕШКИ</span><h2 id="promotion-title">Выбери фигуру</h2><div class="promotion-options" id="promotion-options"></div>
+      </div>
+    </div>
+    <div class="modal-backdrop" id="gameover-modal" hidden>
+      <div class="modal-card gameover-card" role="dialog" aria-modal="true" aria-labelledby="gameover-title">
+        <span class="gameover-emblem" id="gameover-emblem">♛</span><span class="eyebrow">ПАРТИЯ ЗАВЕРШЕНА</span><h2 id="gameover-title">Хорошая игра</h2><p id="gameover-copy"></p><div class="gameover-actions"><button class="ghost-button" id="review-game" type="button" hidden>Разобрать партию</button><button class="solid-button" id="gameover-new" type="button">Сыграть ещё</button></div>
+      </div>
+    </div>
+  </div>
+  <script type="module" src="chess.js"></script>
+</body>
+</html>

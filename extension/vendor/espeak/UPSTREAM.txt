@@ -1,0 +1,12 @@
+eSpeak-NG JavaScript/WebAssembly distribution
+
+Package: espeak-ng 1.0.2
+Package registry: https://www.npmjs.com/package/espeak-ng
+Upstream JavaScript/Emscripten wrapper: https://github.com/ianmarmour/espeak-ng.js
+Upstream eSpeak-NG speech synthesizer: https://github.com/espeak-ng/espeak-ng
+License: GPL-3.0-or-later (see ESPEAK-LICENSE.txt)
+
+The extension includes the package's dist/espeak-ng.js and dist/espeak-ng.wasm
+without modifying their contents. The WASM distribution embeds the eSpeak-NG
+data files, including Russian voice data. It is run locally in an extension
+module worker to synthesize WAV audio; it does not use a remote service.
