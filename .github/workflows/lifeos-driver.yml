@@ -23,7 +23,7 @@ jobs:
       - name: Compile UMDF indirect display driver without signing or installation
         shell: pwsh
         run: |
-          $tools = Get-ChildItem native/virtual-display/packages -Recurse -File -Include stampinf.exe,tracewpp.exe,infverif.exe,inf2cat.exe | Where-Object { $_.FullName -match '[\/]x64[\/]' } | ForEach-Object { $_.DirectoryName } | Select-Object -Unique
+          $tools = Get-ChildItem native/virtual-display/packages -Recurse -File -Include stampinf.exe,tracewpp.exe,infverif.exe,inf2cat.exe | Where-Object { $_.Directory.Name -eq 'x64' } | ForEach-Object { $_.DirectoryName } | Select-Object -Unique
           if (!$tools) { throw 'Official WDK build tools not found in restored packages' }
           $env:PATH = ($tools -join ';') + ';' + $env:PATH
           Get-Command stampinf.exe,tracewpp.exe | Format-Table Name,Source
