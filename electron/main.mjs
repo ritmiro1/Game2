@@ -554,11 +554,17 @@ async function setup() {
     'browser:openDownload': async ({ id }) => {
       const d = downloads.find((d) => d.id === id && d.state === 'completed');
       if (!d?.path) throw new Error('Файл недоступен');
-      if (/\.(exe|msi|bat|cmd|ps1|vbs|scr|com)$/i.test(d.path)) {
+      if (
+        !/\.(pdf|txt|md|csv|json|png|jpe?g|gif|webp|docx|xlsx|pptx|odt|ods|mp3|mp4|wav)$/i.test(
+          d.path,
+        )
+      ) {
         const a = await dialog.showMessageBox(main, {
           type: 'warning',
-          message: 'Запустить скачанный исполняемый файл?',
-          detail: d.path,
+          message: 'Открыть скачанный файл потенциально активного типа?',
+          detail:
+            d.path +
+            '\nЭтот тип файла может запускать код или менять систему. Открывайте только знакомые файлы из доверенного источника.',
           buttons: ['Отмена', 'Открыть'],
           defaultId: 0,
           cancelId: 0,
