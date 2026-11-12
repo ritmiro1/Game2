@@ -266,8 +266,8 @@ function closeTab(id) {
   if (!t) return;
   const privateSession = t.private ? t.view.webContents.session : null;
   main.contentView.removeChildView(t.view);
-  t.view.webContents.close();
   tabs.delete(id);
+  t.view.webContents.close({ waitForBeforeUnload: false });
   if (privateSession) {
     void privateSession.clearStorageData().catch(() => {});
     void privateSession.clearCache().catch(() => {});

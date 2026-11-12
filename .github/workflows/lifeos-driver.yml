@@ -13,6 +13,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: microsoft/setup-msbuild@v2
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
       - uses: nuget/setup-nuget@v2
       - name: Restore pinned official SDK and WDK packages
         working-directory: native/virtual-display
@@ -20,6 +23,10 @@ jobs:
       - name: Compile UMDF indirect display driver without signing or installation
         shell: pwsh
         run: |
+          $tools = Get-ChildItem native/virtual-display/packages -Recurse -File -Include stampinf.exe,tracewpp.exe,infverif.exe,inf2cat.exe | Where-Object { $_.FullName -match '[\/]x64[\/]' } | ForEach-Object { $_.DirectoryName } | Select-Object -Unique
+          if (!$tools) { throw 'Official WDK build tools not found in restored packages' }
+          $env:PATH = ($tools -join ';') + ';' + $env:PATH
+          Get-Command stampinf.exe,tracewpp.exe | Format-Table Name,Source
           $out = Join-Path $env:RUNNER_TEMP 'lifeos-driver-build/'
           $obj = Join-Path $env:RUNNER_TEMP 'lifeos-driver-obj/'
           New-Item -ItemType Directory -Force $out,$obj | Out-Null

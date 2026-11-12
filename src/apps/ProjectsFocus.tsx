@@ -359,8 +359,8 @@ export function Focus() {
                 label="Завершить и сохранить прошедшее время"
                 onClick={async () => {
                   const elapsed = active.duration - remain;
-                  if (elapsed > 0)
-                    await save('sessions', {
+                  if (elapsed > 0) {
+                    const saved = await save('sessions', {
                       id: active.id,
                       title: 'Фокус-сессия',
                       duration: elapsed,
@@ -368,6 +368,8 @@ export function Focus() {
                       day: today(),
                       completed: false,
                     });
+                    if (!saved) return;
+                  }
                   await setting('activeFocus', null);
                 }}
               >

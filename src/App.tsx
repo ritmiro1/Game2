@@ -538,7 +538,10 @@ export function App() {
         await invoke('window:cancelClose');
         return;
       }
-      await setting('desktopLayout', windowsRef.current);
+      if (!(await setting('desktopLayout', windowsRef.current))) {
+        await invoke('window:cancelClose');
+        return;
+      }
       await invoke('window:readyToClose');
     });
   }, [setting, notify]);

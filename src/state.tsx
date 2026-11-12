@@ -34,7 +34,7 @@ interface Context {
   save: (type: string, entity: Partial<Entity>) => Promise<Entity | null>;
   remove: (type: string, entity: Entity) => Promise<void>;
   complete: (id: string) => Promise<void>;
-  setting: (key: string, value: unknown) => Promise<void>;
+  setting: (key: string, value: unknown) => Promise<boolean>;
   run: <T = any>(action: string, args?: unknown) => Promise<T | null>;
 }
 const LifeContext = createContext<Context>(null!);
@@ -112,10 +112,16 @@ export function LifeProvider({ children }: { children: ReactNode }) {
   );
   const setting = useCallback(
     async (key: string, value: unknown) => {
-      const result = await run('settings', { key, value });
-      if (result !== null) setData((d) => ({ ...d, settings: { ...d.settings, [key]: value } }));
+      try {
+        await invoke('settings', { key, value });
+        setData((d) => ({ ...d, settings: { ...d.settings, [key]: value } }));
+        return true;
+      } catch (error) {
+        notify(readableError(error), true);
+        return false;
+      }
     },
-    [run],
+    [notify],
   );
   useEffect(() => {
     document.documentElement.dataset.theme = data.settings.profile?.theme || 'dark';

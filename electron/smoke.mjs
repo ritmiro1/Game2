@@ -86,6 +86,18 @@ export async function runSmoke({ main, nativeActions, service, tabs }) {
     checks.push('separate-cookie-profiles-and-nonpersistent-private-tabs');
     for (const key of [...tabs.keys()]) nativeActions['browser:closeTab']({ id: key });
     assert.equal(nativeActions['browser:state']().tabs.length, 0);
+    if (!tab.view.webContents.isDestroyed()) {
+      await Promise.race([
+        once(tab.view.webContents, 'destroyed'),
+        new Promise((_, reject) => {
+          const t = setTimeout(
+            () => reject(new Error('WebContents was not destroyed after close')),
+            10000,
+          );
+          t.unref();
+        }),
+      ]);
+    }
     assert.ok(tab.view.webContents.isDestroyed());
     checks.push('webcontents-destruction-on-tab-close');
     assert.ok(nativeActions.displays().length > 0);
