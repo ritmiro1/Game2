@@ -12,7 +12,7 @@ import {
   Notification,
 } from 'electron';
 import { readFile, stat, mkdir, writeFile } from 'node:fs/promises';
-import { join, dirname, resolve, sep, extname, basename } from 'node:path';
+import { join, dirname, resolve, sep, extname, basename, isAbsolute } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
@@ -84,6 +84,13 @@ function safeUrl(raw) {
   if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password)
     throw new Error('Разрешены только HTTP(S)-страницы без пароля в адресе');
   return url.href;
+}
+function safeLocalPath(path) {
+  if (typeof path !== 'string' || !isAbsolute(path) || path.includes(String.fromCharCode(0)))
+    throw new Error('Нужен абсолютный локальный путь');
+  if (process.platform === 'win32' && !/^[A-Za-z]:/.test(path))
+    throw new Error('Сетевые и специальные пути в preview не запускаются');
+  return path;
 }
 function trusted(event) {
   return (
@@ -583,10 +590,11 @@ async function setup() {
         properties: ['openFile'],
       });
       if (result.canceled) return null;
-      const path = result.filePaths[0];
+      const path = safeLocalPath(result.filePaths[0]);
       return { name: basename(path), path };
     },
     'file:open': async ({ path }) => {
+      safeLocalPath(path);
       const files = service.store.getSetting('materialFiles') || [];
       if (!files.some((f) => f.path === path)) throw new Error('Файл не был выбран пользователем');
       if (
@@ -607,11 +615,12 @@ async function setup() {
         properties: ['openFile'],
       });
       if (choice.canceled) return null;
-      const path = choice.filePaths[0];
+      const path = safeLocalPath(choice.filePaths[0]);
       return service.store.save('launchers', { title: basename(path, '.exe'), path, args: [] });
     },
     'launcher:run': async ({ id }) => {
       const l = service.store.get('launchers', id);
+      if (l?.path) safeLocalPath(l.path);
       if (
         !l ||
         !l.path ||
@@ -621,6 +630,8 @@ async function setup() {
         throw new Error('Программа недоступна');
       if (!Array.isArray(l.args) || !l.args.every((a) => typeof a === 'string'))
         throw new Error('Некорректные аргументы');
+      if (l.args.length)
+        throw new Error('Запуск с аргументами из импортированных копий в preview запрещён');
       const confirmation = await dialog.showMessageBox(main, {
         type: 'question',
         message: 'Запустить Windows-программу?',

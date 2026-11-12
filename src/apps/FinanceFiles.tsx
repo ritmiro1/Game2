@@ -19,7 +19,7 @@ const money = (n: number) =>
   new Intl.NumberFormat('ru-RU', {
     style: 'currency',
     currency: 'RUB',
-    maximumFractionDigits: 0,
+    maximumFractionDigits: 2,
   }).format(n);
 export function Finance() {
   const { data, save, remove } = useLife();

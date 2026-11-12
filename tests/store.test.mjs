@@ -90,3 +90,29 @@ test('habit daily marks do not duplicate', () => {
   assert.equal(s.list('habitLogs')[0].value, 2);
   s.close();
 });
+test('malformed imported app fields are rejected without corrupting the database', () => {
+  const s = new Store(':memory:');
+  for (const [type, entity] of [
+    ['notes', { title: 'Bad', content: { html: true } }],
+    ['tasks', { title: 'Bad', dependsOn: 'not-an-array' }],
+    ['events', { title: 'Bad', start: '2026-11-12T12:00:00Z', end: 'invalid' }],
+    ['finance', { amount: 10, day: '2026-02-30' }],
+    ['sessions', { duration: NaN, day: '2026-11-12' }],
+    ['bookmarks', { title: 'Bad', url: 'https://user:password@example.com' }],
+  ])
+    assert.throws(() => s.save(type, entity));
+  assert.throws(() => s.setSetting('bad', undefined));
+  assert.equal(s.list('notes').length, 0);
+  s.close();
+});
+test('pending optimistic edits cannot resurrect a deleted record', () => {
+  const s = new Store(':memory:');
+  const note = s.save('notes', { title: 'Original', content: 'text' });
+  s.remove('notes', note.id);
+  assert.throws(
+    () => s.save('notes', { ...note, content: 'late change', _expectedUpdatedAt: note.updatedAt }),
+    /изменена/,
+  );
+  assert.equal(s.list('notes').length, 0);
+  s.close();
+});

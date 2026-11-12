@@ -63,6 +63,19 @@ export function validateEntity(type, input) {
       throw new Error('Введите название');
     entity.title = entity.title.trim().slice(0, 400);
   }
+  for (const field of ['content', 'description', 'category', 'currency', 'projectId', 'timezone']) {
+    if (entity[field] != null && typeof entity[field] !== 'string')
+      throw new Error('Некорректное текстовое поле: ' + field);
+  }
+  for (const field of ['tags', 'dependsOn', 'args']) {
+    if (
+      entity[field] != null &&
+      (!Array.isArray(entity[field]) ||
+        entity[field].length > 1000 ||
+        entity[field].some((v) => typeof v !== 'string' || v.length > 4000))
+    )
+      throw new Error('Некорректный список: ' + field);
+  }
   if (type === 'tasks') {
     if (!['todo', 'doing', 'done'].includes(entity.status || 'todo'))
       throw new Error('Неизвестный статус');
@@ -79,16 +92,29 @@ export function validateEntity(type, input) {
   if (type === 'events') {
     if (!entity.start || Number.isNaN(Date.parse(entity.start)))
       throw new Error('Некорректное начало события');
-    if (entity.end && Date.parse(entity.end) <= Date.parse(entity.start))
+    if (!entity.end || !Number.isFinite(Date.parse(entity.end)))
+      throw new Error('Некорректное окончание события');
+    if (Date.parse(entity.end) <= Date.parse(entity.start))
       throw new Error('Окончание должно быть позже начала');
   }
   if (type === 'finance' && (!Number.isFinite(entity.amount) || entity.amount === 0))
     throw new Error('Введите ненулевую сумму');
-  if (type === 'habitLogs' && (!entity.habitId || !validDay(entity.day)))
+  if ((type === 'finance' || type === 'sessions') && !validDay(entity.day))
+    throw new Error('Некорректная дата записи');
+  if (
+    type === 'sessions' &&
+    (!Number.isFinite(entity.duration) || entity.duration < 0 || entity.duration > 604800)
+  )
+    throw new Error('Некорректная длительность');
+  if (
+    type === 'habitLogs' &&
+    (typeof entity.habitId !== 'string' || !entity.habitId || !validDay(entity.day))
+  )
     throw new Error('Некорректная отметка привычки');
   if (type === 'bookmarks') {
     const url = new URL(entity.url);
-    if (!['https:', 'http:'].includes(url.protocol)) throw new Error('Нужна HTTP(S)-ссылка');
+    if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password)
+      throw new Error('Нужна HTTP(S)-ссылка');
   }
   return entity;
 }

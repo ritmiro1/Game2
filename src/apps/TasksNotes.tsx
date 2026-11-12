@@ -495,6 +495,7 @@ function NoteEditor({ note, type = 'notes' }: { note: Entity; type?: 'notes' | '
       </div>
       <input
         className="note-title"
+        maxLength={400}
         aria-label="Название заметки"
         value={title}
         onChange={(e) => edit('title', e.target.value)}

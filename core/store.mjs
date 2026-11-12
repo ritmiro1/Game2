@@ -41,7 +41,7 @@ export class Store {
     if (existingType && existingType.type !== type)
       throw new Error('Идентификатор уже используется другим типом записи');
     const previous = this.get(type, entity.id);
-    if (input._expectedUpdatedAt && previous && previous.updatedAt !== input._expectedUpdatedAt)
+    if (input._expectedUpdatedAt && (!previous || previous.updatedAt !== input._expectedUpdatedAt))
       throw new Error('Запись изменена в другом окне. Обновите данные.');
     delete entity._expectedUpdatedAt;
     if (type === 'tasks') {
@@ -129,11 +129,15 @@ export class Store {
     }
   }
   setSetting(key, value) {
-    if (typeof key !== 'string' || key.length > 100 || JSON.stringify(value).length > 1_000_000)
+    const serialized = JSON.stringify(value);
+    if (
+      typeof key !== 'string' ||
+      key.length > 100 ||
+      serialized === undefined ||
+      serialized.length > 1_000_000
+    )
       throw new Error('Некорректная настройка');
-    this.db
-      .prepare('INSERT OR REPLACE INTO preferences VALUES(?,?)')
-      .run(key, JSON.stringify(value));
+    this.db.prepare('INSERT OR REPLACE INTO preferences VALUES(?,?)').run(key, serialized);
     return value;
   }
   getSetting(key) {

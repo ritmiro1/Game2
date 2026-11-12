@@ -85,7 +85,9 @@ export function parseDocument(html, url) {
     text,
     publishedAt,
     publishedSource: publishedAt ? 'source-metadata' : null,
-    links: [...new Set(links)].slice(0, 60),
+    links: /(?:^|[,\s])(nofollow|none)(?:$|[,\s])/i.test(robots)
+      ? []
+      : [...new Set(links)].slice(0, 60),
   };
 }
 export function parseFeed(xml, baseUrl) {
@@ -232,9 +234,11 @@ export class SearchEngine {
     const count = Number(
       this.db.prepare('SELECT count(*) n FROM frontier WHERE source_id=?').get(sourceId).n,
     );
-    if (count >= 1000) return;
+    if (count >= 1000 && depth !== 0) return;
     this.db
-      .prepare('INSERT OR IGNORE INTO frontier(url,source_id,depth,priority) VALUES(?,?,?,?)')
+      .prepare(
+        'INSERT INTO frontier(url,source_id,depth,priority) VALUES(?,?,?,?) ON CONFLICT(url) DO UPDATE SET depth=min(frontier.depth,excluded.depth),priority=min(frontier.priority,excluded.priority) WHERE frontier.source_id=excluded.source_id',
+      )
       .run(url, sourceId, depth, priority);
   }
   query(q, { period = 'all', site = '', limit = 20 } = {}) {
