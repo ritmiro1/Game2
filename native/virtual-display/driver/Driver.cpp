@@ -506,9 +506,9 @@ void IndirectDeviceContext::InitAdapter()
     AdapterCaps.EndPointDiagnostics.TransmissionType = IDDCX_TRANSMISSION_TYPE_WIRED_OTHER;
 
     // Declare your device strings for telemetry (required)
-    AdapterCaps.EndPointDiagnostics.pEndPointFriendlyName = L"IddSample Device";
-    AdapterCaps.EndPointDiagnostics.pEndPointManufacturerName = L"Microsoft";
-    AdapterCaps.EndPointDiagnostics.pEndPointModelName = L"IddSample Model";
+    AdapterCaps.EndPointDiagnostics.pEndPointFriendlyName = L"LifeOS Virtual Display (experimental)";
+    AdapterCaps.EndPointDiagnostics.pEndPointManufacturerName = L"LifeOS contributors";
+    AdapterCaps.EndPointDiagnostics.pEndPointModelName = L"LifeOS Virtual Display";
 
     // Declare your hardware and firmware versions (required)
     IDDCX_ENDPOINT_VERSION Version = {};
@@ -581,8 +581,10 @@ void IndirectDeviceContext::FinishInit(UINT ConnectorIndex)
     // unique monitor or to use "this" device's container ID for a permanent/integrated monitor.
     // ==============================
 
-    // Create a container ID
-    CoCreateGuid(&MonitorInfo.MonitorContainerId);
+    // One integrated virtual output: keep its container identity stable across restarts.
+    static const GUID LifeOSMonitorContainerId =
+        { 0x7c8c418b, 0xa8d7, 0x4b90, { 0x90, 0x0e, 0xed, 0xe5, 0x88, 0xe9, 0x25, 0xd8 } };
+    MonitorInfo.MonitorContainerId = LifeOSMonitorContainerId;
 
     IDARG_IN_MONITORCREATE MonitorCreate = {};
     MonitorCreate.ObjectAttributes = &Attr;
@@ -600,6 +602,12 @@ void IndirectDeviceContext::FinishInit(UINT ConnectorIndex)
         // Tell the OS that the monitor has been plugged in
         IDARG_OUT_MONITORARRIVAL ArrivalOut;
         Status = IddCxMonitorArrival(MonitorCreateOut.MonitorObject, &ArrivalOut);
+        if (!NT_SUCCESS(Status))
+        {
+            pMonitorContextWrapper->Cleanup();
+            WdfObjectDelete(MonitorCreateOut.MonitorObject);
+            return;
+        }
     }
 }
 
