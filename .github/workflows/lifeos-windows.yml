@@ -37,21 +37,29 @@ jobs:
           Remove-Item Env:LIFEOS_SMOKE_DIR
       - name: Build Windows installer and portable EXE
         run: npx electron-builder --win nsis portable --x64 --publish never
-      - name: Smoke-test packaged EXE
+      - name: Smoke-test unpacked, portable and installed EXE
         shell: pwsh
         run: |
-          $env:LIFEOS_SMOKE_DIR = Join-Path $env:RUNNER_TEMP 'lifeos-packaged-smoke'
-          New-Item -ItemType Directory -Force $env:LIFEOS_SMOKE_DIR | Out-Null
-          $app = Join-Path (Get-Location) 'release/win-unpacked/LifeOS.exe'
-          $env:LIFEOS_EXE = $app
-          ./scripts/ci-run.ps1 node scripts/smoke-electron.mjs
-          if ($LASTEXITCODE -ne 0) { throw 'Packaged smoke failed' }
-          Remove-Item Env:LIFEOS_EXE
-          $file = Join-Path $env:LIFEOS_SMOKE_DIR 'smoke-result.json'
-          if (!(Test-Path $file)) { throw 'No packaged smoke result' }
-          Copy-Item $file release/Windows-smoke.json
-          Get-Content $file
-          Remove-Item Env:LIFEOS_SMOKE_DIR
+          $results = @{}
+          function Test-LifeOS([string]$binary, [string]$kind) {
+            $env:LIFEOS_SMOKE_DIR = Join-Path $env:RUNNER_TEMP "lifeos-$kind-smoke"
+            $env:LIFEOS_EXE = $binary
+            ./scripts/ci-run.ps1 node scripts/smoke-electron.mjs
+            if ($LASTEXITCODE -ne 0) { throw "$kind executable smoke failed" }
+            $file = Join-Path $env:LIFEOS_SMOKE_DIR 'smoke-result.json'
+            if (!(Test-Path $file)) { throw "No $kind smoke result" }
+            $results[$kind] = Get-Content $file -Raw | ConvertFrom-Json
+          }
+          Test-LifeOS (Join-Path (Get-Location) 'release/win-unpacked/LifeOS.exe') 'unpacked'
+          Test-LifeOS (Join-Path (Get-Location) 'release/LifeOS-0.1.0-Portable-x64.exe') 'portable'
+          $installer = Join-Path (Get-Location) 'release/LifeOS-0.1.0-Setup-x64.exe'
+          $destination = Join-Path $env:RUNNER_TEMP 'LifeOS-installed-test'
+          $install = Start-Process -FilePath $installer -ArgumentList "/S /D=$destination" -PassThru
+          if (!$install.WaitForExit(90000)) { $install.Kill(); throw 'Installer timeout' }
+          if ($install.ExitCode -ne 0) { throw "Installer failed: $($install.ExitCode)" }
+          Test-LifeOS (Join-Path $destination 'LifeOS.exe') 'installed'
+          $results | ConvertTo-Json -Depth 10 | Set-Content -Encoding utf8 release/Windows-smoke.json
+          Remove-Item Env:LIFEOS_SMOKE_DIR,Env:LIFEOS_EXE
       - uses: ilammy/msvc-dev-cmd@v1
         with:
           arch: x64

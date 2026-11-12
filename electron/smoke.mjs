@@ -84,11 +84,12 @@ export async function runSmoke({ main, nativeActions, service, tabs }) {
       !(service.store.getSetting('browserTabs') || []).some((t) => t.profile === 'private'),
     );
     checks.push('separate-cookie-profiles-and-nonpersistent-private-tabs');
+    const closedContents = tab.view.webContents;
     for (const key of [...tabs.keys()]) nativeActions['browser:closeTab']({ id: key });
     assert.equal(nativeActions['browser:state']().tabs.length, 0);
-    if (!tab.view.webContents.isDestroyed()) {
+    if (!closedContents.isDestroyed()) {
       await Promise.race([
-        once(tab.view.webContents, 'destroyed'),
+        once(closedContents, 'destroyed'),
         new Promise((_, reject) => {
           const t = setTimeout(
             () => reject(new Error('WebContents was not destroyed after close')),
@@ -98,7 +99,7 @@ export async function runSmoke({ main, nativeActions, service, tabs }) {
         }),
       ]);
     }
-    assert.ok(tab.view.webContents.isDestroyed());
+    assert.ok(closedContents.isDestroyed());
     checks.push('webcontents-destruction-on-tab-close');
     assert.ok(nativeActions.displays().length > 0);
     checks.push('windows-display-enumeration-no-simulated-monitor');

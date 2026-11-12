@@ -36,7 +36,11 @@ app.setName('LifeOS');
 if (process.platform === 'win32') app.setAppUserModelId('app.lifeos.desktop');
 const smoke = process.argv.includes('--smoke-test'),
   smokeDir = process.env.LIFEOS_SMOKE_DIR;
-if (smokeDir) app.setPath('userData', smokeDir);
+if (smoke && !smokeDir) {
+  console.error('Smoke tests require an isolated LIFEOS_SMOKE_DIR.');
+  app.exit(1);
+}
+if (smoke && smokeDir) app.setPath('userData', smokeDir);
 if (smoke) app.disableHardwareAcceleration();
 let handleLife,
   main,
