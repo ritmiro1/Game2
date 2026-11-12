@@ -23,7 +23,7 @@ jobs:
           $out = Join-Path $env:RUNNER_TEMP 'lifeos-driver-build/'
           $obj = Join-Path $env:RUNNER_TEMP 'lifeos-driver-obj/'
           New-Item -ItemType Directory -Force $out,$obj | Out-Null
-          msbuild native/virtual-display/driver/LifeOSVirtualDisplay.vcxproj /m /p:Configuration=Release /p:Platform=x64 /p:SignMode=Off /p:Driver_SpectreMitigation=false /p:RunCodeAnalysis=false /p:EnablePREfast=false /p:TreatWarningAsError=false /p:Inf2CatUseLocalTime=true /p:OutDir="$out" /p:IntDir="$obj" /bl:driver-build.binlog
+          ./scripts/ci-run.ps1 msbuild native/virtual-display/driver/LifeOSVirtualDisplay.vcxproj /m /p:Configuration=Release /p:Platform=x64 /p:SignMode=Off /p:Driver_SpectreMitigation=false /p:RunCodeAnalysis=false /p:EnablePREfast=false /p:TreatWarningAsError=false /p:Inf2CatUseLocalTime=true /p:OutDir="$out" /p:IntDir="$obj" /bl:driver-build.binlog
           if ($LASTEXITCODE -ne 0) { throw 'Experimental driver compile failed' }
           $dll = Get-ChildItem $out -Recurse -Filter '*.dll' | Select-Object -First 1
           if (!$dll) { throw 'No driver DLL produced' }

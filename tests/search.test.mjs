@@ -152,3 +152,73 @@ test('feed crawl discovers new documents and never fabricates full page metadata
   assert.equal(e.query('FreshDiscovery').results.length, 1);
   await e.close();
 });
+test('persistent frontier makes progress beyond the first pages and revisits older documents', async () => {
+  const { mkdtempSync, rmSync } = await import('node:fs');
+  const { join } = await import('node:path');
+  const { tmpdir } = await import('node:os');
+  const dir = mkdtempSync(join(tmpdir(), 'lifeos-frontier-'));
+  let edited = false;
+  const fetcher = async (url) => ({
+    url,
+    status: url.endsWith('robots.txt') ? 404 : 200,
+    headers: { 'content-type': 'text/html' },
+    text: url.endsWith('/news')
+      ? html('Frontier') +
+        Array.from({ length: 6 }, (_, i) => `<a href="/news/${i}">article</a>`).join('')
+      : html(edited ? 'UpdatedDocument' : 'Document' + url.split('/').at(-1)),
+  });
+  let e = new SearchEngine(join(dir, 'search.sqlite'), { seed: false, delay: 0, fetcher });
+  e.addSource('Frontier', 'https://example.com/news');
+  await e.crawl({ pagesPerSource: 3 });
+  assert.equal(e.status().documents, 3);
+  assert.equal(e.status().queued, 7);
+  await e.close();
+  e = new SearchEngine(join(dir, 'search.sqlite'), { seed: false, delay: 0, fetcher });
+  assert.ok(e.status().lastRun);
+  await e.crawl({ pagesPerSource: 3 });
+  assert.equal(e.status().documents, 5);
+  await e.crawl({ pagesPerSource: 3 });
+  assert.equal(e.status().documents, 7);
+  edited = true;
+  e.db.prepare('UPDATE frontier SET next_fetch=0 WHERE depth>0').run();
+  await e.crawl({ pagesPerSource: 2 });
+  assert.equal(e.query('UpdatedDocument').results.length, 1);
+  await e.close();
+  rmSync(dir, { recursive: true, force: true });
+});
+test('noindex and a newly disallowing robots policy remove previous search results', async () => {
+  let blocked = false,
+    noindex = false;
+  const e = new SearchEngine(':memory:', {
+    seed: false,
+    delay: 0,
+    fetcher: async (url) =>
+      url.endsWith('robots.txt')
+        ? {
+            url,
+            status: 200,
+            headers: {},
+            text: 'User-agent: *\n' + (blocked ? 'Disallow: /' : 'Allow: /'),
+          }
+        : {
+            url,
+            status: 200,
+            headers: { 'content-type': 'text/html' },
+            text:
+              html('PolicyDocument') + (noindex ? '<meta name="robots" content="noindex">' : ''),
+          },
+  });
+  const id = e.addSource('Policy', 'https://example.com/news');
+  await e.crawlUrl('https://example.com/news', id);
+  assert.equal(e.query('PolicyDocument').results.length, 1);
+  noindex = true;
+  await e.crawlUrl('https://example.com/news', id);
+  assert.equal(e.query('PolicyDocument').results.length, 0);
+  noindex = false;
+  await e.crawlUrl('https://example.com/news', id);
+  blocked = true;
+  e.robotCache.clear();
+  await assert.rejects(e.crawlUrl('https://example.com/news', id), /robots/);
+  assert.equal(e.query('PolicyDocument').results.length, 0);
+  await e.close();
+});

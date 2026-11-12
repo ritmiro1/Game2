@@ -50,6 +50,11 @@ export function parseDocument(html, url) {
       if (c.origin === new URL(url).origin) canonical = c.href;
     }
   } catch {}
+  const robots =
+    ($('meta[name=robots]').attr('content') || '') +
+    ',' +
+    ($('meta[name=LifeOSBot]').attr('content') || '');
+  const noindex = /(?:^|[,\s])(noindex|none)(?:$|[,\s])/i.test(robots);
   const links = [];
   $('link[rel=alternate][href]').each((_, el) => {
     try {
@@ -74,6 +79,7 @@ export function parseDocument(html, url) {
   });
   return {
     url: canonical,
+    noindex,
     title: title || new URL(url).hostname,
     description,
     text,
@@ -121,9 +127,17 @@ export class SearchEngine {
     this.db.exec(`PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;
       CREATE TABLE IF NOT EXISTS sources(id TEXT PRIMARY KEY,title TEXT NOT NULL,url TEXT NOT NULL UNIQUE,enabled INTEGER NOT NULL DEFAULT 1,last_checked TEXT,last_error TEXT);
       CREATE TABLE IF NOT EXISTS documents(id INTEGER PRIMARY KEY,url TEXT NOT NULL UNIQUE,title TEXT,description TEXT,body TEXT,published_at TEXT,published_source TEXT,fetched_at TEXT,changed_at TEXT,hash TEXT,status INTEGER,etag TEXT,last_modified TEXT,source_id TEXT);
+      CREATE TABLE IF NOT EXISTS frontier(url TEXT PRIMARY KEY,source_id TEXT NOT NULL,depth INTEGER NOT NULL DEFAULT 0,priority INTEGER NOT NULL DEFAULT 5,next_fetch INTEGER NOT NULL DEFAULT 0,failures INTEGER NOT NULL DEFAULT 0);
+      CREATE INDEX IF NOT EXISTS frontier_schedule ON frontier(source_id,next_fetch,priority);
+      CREATE TABLE IF NOT EXISTS search_meta(key TEXT PRIMARY KEY,value TEXT);
       CREATE VIRTUAL TABLE IF NOT EXISTS web_fts USING fts5(title,body,url UNINDEXED,tokenize='unicode61 remove_diacritics 2');`);
     if (seed && Number(this.db.prepare('SELECT count(*) n FROM sources').get().n) === 0)
       for (const [title, url] of DEFAULT_SOURCES) this.addSource(title, url);
+    this.lastRun =
+      this.db.prepare("SELECT value FROM search_meta WHERE key='lastRun'").get()?.value || null;
+    this.db.exec(
+      'INSERT OR IGNORE INTO frontier(url,source_id,depth,next_fetch) SELECT url,source_id,1,0 FROM documents WHERE source_id IS NOT NULL',
+    );
   }
   sources() {
     return this.db.prepare('SELECT * FROM sources ORDER BY title').all();
@@ -144,6 +158,7 @@ export class SearchEngine {
       const docs = this.db.prepare('SELECT url FROM documents WHERE source_id=?').all(id);
       for (const d of docs) this.db.prepare('DELETE FROM web_fts WHERE url=?').run(d.url);
       this.db.prepare('DELETE FROM documents WHERE source_id=?').run(id);
+      this.db.prepare('DELETE FROM frontier WHERE source_id=?').run(id);
       this.db.prepare('DELETE FROM sources WHERE id=?').run(id);
       this.db.exec('COMMIT');
     } catch (e) {
@@ -157,6 +172,7 @@ export class SearchEngine {
         this.db.prepare('SELECT count(*) n FROM documents WHERE status=200').get().n,
       ),
       sources: this.sources(),
+      queued: Number(this.db.prepare('SELECT count(*) n FROM frontier').get().n),
       busy: this.busy,
       progress: this.progress,
       lastRun: this.lastRun,
@@ -199,6 +215,27 @@ export class SearchEngine {
       this.db.exec('ROLLBACK');
       throw e;
     }
+  }
+  deindex(url, status = 0) {
+    this.db.exec('BEGIN');
+    try {
+      this.db.prepare('UPDATE documents SET status=? WHERE url=?').run(status, url);
+      this.db.prepare('DELETE FROM web_fts WHERE url=?').run(url);
+      this.db.exec('COMMIT');
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+  }
+  enqueue(url, sourceId, depth = 0, priority = 5) {
+    if (depth > 2) return;
+    const count = Number(
+      this.db.prepare('SELECT count(*) n FROM frontier WHERE source_id=?').get(sourceId).n,
+    );
+    if (count >= 1000) return;
+    this.db
+      .prepare('INSERT OR IGNORE INTO frontier(url,source_id,depth,priority) VALUES(?,?,?,?)')
+      .run(url, sourceId, depth, priority);
   }
   query(q, { period = 'all', site = '', limit = 20 } = {}) {
     const query = String(q || '')
@@ -264,19 +301,24 @@ export class SearchEngine {
     return item.parser?.isAllowed(url, 'LifeOSBot') !== false;
   }
   async crawlUrl(url, sourceId) {
-    if (!(await this.allowed(url))) throw new Error('Запрещено robots.txt');
+    if (!(await this.allowed(url))) {
+      this.deindex(url, 403);
+      throw new Error('Запрещено robots.txt');
+    }
     const origin = new URL(url).origin;
     const wait = this.delay - (Date.now() - (this.domainTimes.get(origin) || 0));
     if (wait > 0) await new Promise((r) => setTimeout(r, wait));
     this.domainTimes.set(origin, Date.now());
     const previous = this.db.prepare('SELECT * FROM documents WHERE url=?').get(url);
     const headers = {};
-    if (previous?.etag) headers['if-none-match'] = previous.etag;
-    if (previous?.last_modified) headers['if-modified-since'] = previous.last_modified;
+    if (previous?.status === 200 && previous.etag) headers['if-none-match'] = previous.etag;
+    if (previous?.status === 200 && previous.last_modified)
+      headers['if-modified-since'] = previous.last_modified;
     const response = await this.fetcher(url, {
       headers,
       beforeFetch: (target) => this.allowed(target),
     });
+    if (sourceId && !this.db.prepare('SELECT id FROM sources WHERE id=?').get(sourceId)) return [];
     if (response.url !== url && !(await this.allowed(response.url)))
       throw new Error('Перенаправление запрещено robots.txt');
     if (response.status === 304 && previous) {
@@ -286,8 +328,7 @@ export class SearchEngine {
       return [];
     }
     if ([404, 410].includes(response.status)) {
-      this.db.prepare('UPDATE documents SET status=? WHERE url=?').run(response.status, url);
-      this.db.prepare('DELETE FROM web_fts WHERE url=?').run(url);
+      this.deindex(url, response.status);
       return [];
     }
     if (response.status !== 200) throw new Error('Источник вернул HTTP ' + response.status);
@@ -298,6 +339,14 @@ export class SearchEngine {
       return parseFeed(response.text, response.url);
     if (!/text\/html|application\/xhtml/i.test(response.headers['content-type'] || '')) return [];
     const doc = parseDocument(response.text, response.url);
+    if (
+      doc.noindex ||
+      /(?:^|[,\s])(noindex|none)(?:$|[,\s])/i.test(response.headers['x-robots-tag'] || '')
+    ) {
+      this.deindex(url);
+      this.deindex(doc.url);
+      return doc.links;
+    }
     this.index(doc, sourceId, response.headers);
     return doc.links;
   }
@@ -310,26 +359,44 @@ export class SearchEngine {
         if (this.stopped) break;
         this.progress = source.title;
         let error = null;
-        const queue = [source.url],
-          seen = new Set();
-        while (queue.length && seen.size < pagesPerSource && !this.stopped) {
-          const url = queue.shift();
-          if (seen.has(url)) continue;
-          seen.add(url);
+        this.enqueue(source.url, source.id, 0, 0);
+        // Always refresh the discovery page; the rest of the persistent frontier rotates.
+        this.db.prepare('UPDATE frontier SET next_fetch=0 WHERE url=?').run(source.url);
+        const cap = Math.max(1, Math.min(Number(pagesPerSource) || 3, 50));
+        for (let i = 0; i < cap && !this.stopped; i++) {
+          const entry = this.db
+            .prepare(
+              'SELECT * FROM frontier WHERE source_id=? AND next_fetch<=? ORDER BY priority,next_fetch,rowid LIMIT 1',
+            )
+            .get(source.id, Date.now());
+          if (!entry) break;
           try {
-            const links = await this.crawlUrl(url, source.id);
-            for (const link of links)
+            const links = await this.crawlUrl(entry.url, source.id);
+            this.db
+              .prepare('UPDATE frontier SET next_fetch=?,failures=0 WHERE url=?')
+              .run(Date.now() + (entry.depth === 0 ? 30 * 60 * 1000 : 6 * 3600000), entry.url);
+            for (const link of links) {
+              const u = new URL(link),
+                base = new URL(source.url);
+              if (u.origin !== base.origin) continue;
               if (
-                !seen.has(link) &&
-                new URL(link).origin === new URL(source.url).origin &&
-                (new URL(source.url).hostname !== 'github.com' ||
-                  new URL(link).pathname.startsWith(
-                    new URL(source.url).pathname.replace(/\/$/, ''),
-                  ))
+                base.hostname === 'github.com' &&
+                !u.pathname.startsWith(base.pathname.replace(/\/$/, ''))
               )
-                queue.push(link);
+                continue;
+              const isFeed =
+                /\.(atom|rss|xml)(?:$|\?)/i.test(link) || /\/feed(?:\/|$)/i.test(u.pathname);
+              this.enqueue(link, source.id, entry.depth + 1, isFeed ? 1 : 5);
+            }
           } catch (e) {
-            error = e.message.slice(0, 200);
+            error = String(e.message).slice(0, 200);
+            this.db
+              .prepare('UPDATE frontier SET next_fetch=?,failures=failures+1 WHERE url=?')
+              .run(
+                Date.now() +
+                  Math.min(86400000, 30 * 60 * 1000 * Math.pow(2, Math.min(entry.failures, 5))),
+                entry.url,
+              );
           }
         }
         this.db
@@ -337,6 +404,9 @@ export class SearchEngine {
           .run(new Date().toISOString(), error, source.id);
       }
       this.lastRun = new Date().toISOString();
+      this.db
+        .prepare('INSERT OR REPLACE INTO search_meta(key,value) VALUES(?,?)')
+        .run('lastRun', this.lastRun);
     } finally {
       this.busy = false;
       this.progress = null;

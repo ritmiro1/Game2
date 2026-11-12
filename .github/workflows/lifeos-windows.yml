@@ -19,17 +19,17 @@ jobs:
         with:
           node-version: '22'
           cache: npm
-      - run: npm ci --no-audit --no-fund
-      - run: npm run format:check
-      - run: npm audit --omit=dev --audit-level=high
-      - run: npm test
-      - run: npm run build
+      - run: ./scripts/ci-run.ps1 npm ci --no-audit --no-fund
+      - run: ./scripts/ci-run.ps1 npm run format:check
+      - run: ./scripts/ci-run.ps1 npm audit --omit=dev --audit-level=high
+      - run: ./scripts/ci-run.ps1 npm test
+      - run: ./scripts/ci-run.ps1 npm run build
       - name: Smoke-test Electron renderer and SQLite
         shell: pwsh
         run: |
           $env:LIFEOS_SMOKE_DIR = Join-Path $env:RUNNER_TEMP 'lifeos-source-smoke'
           New-Item -ItemType Directory -Force $env:LIFEOS_SMOKE_DIR | Out-Null
-          node scripts/smoke-electron.mjs
+          ./scripts/ci-run.ps1 node scripts/smoke-electron.mjs
           if ($LASTEXITCODE -ne 0) { throw 'Electron source smoke failed' }
           $file = Join-Path $env:LIFEOS_SMOKE_DIR 'smoke-result.json'
           if (!(Test-Path $file)) { throw 'No Electron smoke result' }
@@ -44,7 +44,7 @@ jobs:
           New-Item -ItemType Directory -Force $env:LIFEOS_SMOKE_DIR | Out-Null
           $app = Join-Path (Get-Location) 'release/win-unpacked/LifeOS.exe'
           $env:LIFEOS_EXE = $app
-          node scripts/smoke-electron.mjs
+          ./scripts/ci-run.ps1 node scripts/smoke-electron.mjs
           if ($LASTEXITCODE -ne 0) { throw 'Packaged smoke failed' }
           Remove-Item Env:LIFEOS_EXE
           $file = Join-Path $env:LIFEOS_SMOKE_DIR 'smoke-result.json'
