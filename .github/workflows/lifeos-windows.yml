@@ -2,7 +2,7 @@ name: LifeOS Windows preview
 on:
   push:
     branches: ['arena/4a8a838f-game2']
-    paths-ignore: ['docs/**']
+    paths-ignore: ['docs/**', '.github/workflows/lifeos-driver.yml']
   workflow_dispatch:
 permissions:
   contents: write
@@ -63,7 +63,11 @@ jobs:
         shell: pwsh
         run: |
           Copy-Item native/virtual-display/device/LifeOSDisplayDevice.exe release/LifeOSDisplayDevice-experimental.exe
-          Compress-Archive -Path native/virtual-display/* -DestinationPath release/LifeOS-0.1.0-VirtualDisplay-source.zip
+          New-Item -ItemType Directory -Force virtual-display-source | Out-Null
+          Copy-Item -Recurse native/virtual-display/driver,native/virtual-display/device virtual-display-source/
+          Copy-Item native/virtual-display/LICENSE,native/virtual-display/README.ru.md,native/virtual-display/packages.config,native/virtual-display/Directory.Build.props virtual-display-source/
+          Get-ChildItem virtual-display-source -Recurse -File | Where-Object { $_.Extension -in '.obj','.exe' } | Remove-Item
+          Compress-Archive -Path virtual-display-source/* -DestinationPath release/LifeOS-0.1.0-VirtualDisplay-source.zip
           New-Item -ItemType Directory -Force search-package | Out-Null
           Copy-Item -Recurse core,server search-package/
           Copy-Item package.json,package-lock.json,Dockerfile,compose.yaml,.env.example,LICENSE,README.md search-package/

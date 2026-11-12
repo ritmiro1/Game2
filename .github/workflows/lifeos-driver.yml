@@ -1,0 +1,44 @@
+name: LifeOS experimental driver compile check
+on:
+  push:
+    branches: ['arena/4a8a838f-game2']
+    paths: ['native/**', '.github/workflows/lifeos-driver.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  compile-only:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: microsoft/setup-msbuild@v2
+      - uses: nuget/setup-nuget@v2
+      - name: Restore pinned official SDK and WDK packages
+        working-directory: native/virtual-display
+        run: nuget restore packages.config -PackagesDirectory packages -NonInteractive
+      - name: Compile UMDF indirect display driver without signing or installation
+        shell: pwsh
+        run: |
+          $out = Join-Path $env:RUNNER_TEMP 'lifeos-driver-build/'
+          $obj = Join-Path $env:RUNNER_TEMP 'lifeos-driver-obj/'
+          New-Item -ItemType Directory -Force $out,$obj | Out-Null
+          msbuild native/virtual-display/driver/LifeOSVirtualDisplay.vcxproj /m /p:Configuration=Release /p:Platform=x64 /p:SignMode=Off /p:Driver_SpectreMitigation=false /p:RunCodeAnalysis=false /p:EnablePREfast=false /p:TreatWarningAsError=false /p:Inf2CatUseLocalTime=true /p:OutDir="$out" /p:IntDir="$obj" /bl:driver-build.binlog
+          if ($LASTEXITCODE -ne 0) { throw 'Experimental driver compile failed' }
+          $dll = Get-ChildItem $out -Recurse -Filter '*.dll' | Select-Object -First 1
+          if (!$dll) { throw 'No driver DLL produced' }
+          Write-Output "Compiled: $($dll.FullName)"
+          @{
+            compiled = $true
+            installed = $false
+            signed = $false
+            hardwareTested = $false
+            note = 'Compile-only evidence; not an installable production display driver.'
+          } | ConvertTo-Json | Set-Content -Encoding utf8 "$out/compile-status.json"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: LifeOS-experimental-driver-compile-evidence
+          path: |
+            driver-build.binlog
+            ${{ runner.temp }}/lifeos-driver-build/

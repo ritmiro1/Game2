@@ -18,3 +18,7 @@ native/**/x64/
 *.pfx
 *.cer
 *.key
+native/**/packages/
+*.binlog
+*.obj
+native/**/*.exe
